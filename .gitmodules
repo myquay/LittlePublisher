@@ -1,0 +1,6 @@
+[submodule "Micropub"]
+	path = Micropub
+	url = https://github.com/myquay/Micropub.git
+[submodule "IndieAuth"]
+	path = IndieAuth
+	url = https://github.com/myquay/IndieAuth.git
