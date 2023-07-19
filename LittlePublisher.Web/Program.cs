@@ -4,6 +4,7 @@ using LittlePublisher.Web.Configuration;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Linq.Expressions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,11 +20,12 @@ var authBuilder = builder.Services.AddAuthentication()
                 {
                     options.SignInScheme = IndieAuthDefaults.SignInScheme;
                     options.CallbackPath = "/indie-auth/complete";
+                    options.Issuer = config.Host;
+                    options.Scopes = new[] { "create", "update", "delete", "media" };
 
-                    //options.TokenEndpoint = "/indie-auth/token";
-                    //options.AuthorizationEndpoint = "/indie-auth/authorization";
-                    //options.IntrospectionEndpoint = "/api/user/me";
-                    //options.IntrospectionAuthMethodsSupported = new[] { IndieAuthMethod.GITHUB };
+                    options.AuthorizationEndpoint = $"{config.Host}/indie-auth/authorization";
+                    options.TokenEndpoint = $"{config.Host}/indie-auth/token";
+                    options.IntrospectionEndpoint = $"{config.Host}/indie-auth/token-info";
                 });
 
 if (config.IndieAuth.GitHub.Enabled)
