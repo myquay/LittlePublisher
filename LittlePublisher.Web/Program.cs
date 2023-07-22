@@ -11,21 +11,25 @@ var builder = WebApplication.CreateBuilder(args);
 var config = builder.Configuration.GetSection("App").Get<AppConfiguration>();
 
 var authBuilder = builder.Services.AddAuthentication()
-                .AddCookie(IndieAuthDefaults.ExternalCookieSignInScheme)
-                .AddCookie(IndieAuthDefaults.SignInScheme, options =>
+                .AddCookie(IndieAuthDefaults.ExternalCookieSignInScheme, options =>
                 {
                     options.LoginPath = "/account/sign-in";
                 })
+                .AddCookie(IndieAuthDefaults.SignInScheme, options =>
+                {
+                    options.ForwardChallenge = IndieAuthDefaults.ExternalCookieSignInScheme;
+                })
                 .AddIndieAuth(IndieAuthDefaults.AuthenticationScheme, options =>
                 {
-                    options.SignInScheme = IndieAuthDefaults.SignInScheme;
                     options.CallbackPath = "/indie-auth/complete";
                     options.Issuer = config.Host;
-                    options.Scopes = new[] { "create", "update", "delete", "media" };
+                    options.Scopes = new[] { "profile", "create", "update", "delete", "media" };
 
-                    options.AuthorizationEndpoint = $"{config.Host}/indie-auth/authorization";
-                    options.TokenEndpoint = $"{config.Host}/indie-auth/token";
-                    options.IntrospectionEndpoint = $"{config.Host}/indie-auth/token-info";
+                    options.AuthorizationEndpoint = "/indie-auth/authorization";
+                    options.TokenEndpoint = "/indie-auth/token";
+                    options.IntrospectionEndpoint = "/indie-auth/token-info";
+
+                    options.SignInScheme = IndieAuthDefaults.SignInScheme;
                 });
 
 if (config.IndieAuth.GitHub.Enabled)
@@ -39,9 +43,11 @@ if (config.IndieAuth.GitHub.Enabled)
     });
 }
 
+//TODO: ADD ALL SUPPORTED METHODS OF SIGNING IN
+
 builder.Services.AddAuthorization(options =>
 {
-    options.DefaultPolicy = new AuthorizationPolicyBuilder(IndieAuthDefaults.SignInScheme)
+    options.DefaultPolicy = new AuthorizationPolicyBuilder(IndieAuthDefaults.AuthenticationScheme)
         .RequireAuthenticatedUser()
         .Build();
 });
