@@ -15,4 +15,9 @@
     <ProjectReference Include="..\Micropub\Micropub.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Pages\Shared\" />
+    <Folder Include="wwwroot\" />
+  </ItemGroup>
+
 </Project>

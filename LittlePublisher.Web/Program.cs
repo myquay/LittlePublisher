@@ -1,9 +1,11 @@
 using IndieAuth;
 using IndieAuth.Authentication;
 using LittlePublisher.Web.Configuration;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.WebUtilities;
 using System.Linq.Expressions;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -14,6 +16,17 @@ var authBuilder = builder.Services.AddAuthentication()
                 .AddCookie(IndieAuthDefaults.ExternalCookieSignInScheme, options =>
                 {
                     options.LoginPath = "/account/sign-in";
+                    options.Events.OnRedirectToLogin = context =>
+                    {
+                        if (context.Properties.Items.TryGetValue("me", out string? me) && me != null)
+                            context.RedirectUri = QueryHelpers.AddQueryString(context.RedirectUri, "me", me);
+
+                        if (context.Properties.Items.TryGetValue("client_id", out string? clientId) && clientId != null)
+                            context.RedirectUri = QueryHelpers.AddQueryString(context.RedirectUri, "client_id", clientId);
+
+                        context.Response.Redirect(context.RedirectUri);
+                        return Task.CompletedTask;
+                    };
                 })
                 .AddCookie(IndieAuthDefaults.SignInScheme, options =>
                 {
@@ -30,6 +43,7 @@ var authBuilder = builder.Services.AddAuthentication()
                     options.IntrospectionEndpoint = "/indie-auth/token-info";
 
                     options.SignInScheme = IndieAuthDefaults.SignInScheme;
+
                 });
 
 if (config.IndieAuth.GitHub.Enabled)
@@ -43,13 +57,16 @@ if (config.IndieAuth.GitHub.Enabled)
     });
 }
 
-//TODO: ADD ALL SUPPORTED METHODS OF SIGNING IN
-
 builder.Services.AddAuthorization(options =>
 {
     options.DefaultPolicy = new AuthorizationPolicyBuilder(IndieAuthDefaults.AuthenticationScheme)
         .RequireAuthenticatedUser()
         .Build();
+});
+
+builder.Services.AddRazorPages().AddRazorPagesOptions(options =>
+{
+    options.Conventions.AddPageRoute("/Account/SignIn", "/account/sign-in");
 });
 
 var app = builder.Build();
@@ -65,6 +82,8 @@ app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+app.MapRazorPages();
 
 app.MapGet("/", () => "Hello World!")
     .RequireAuthorization();
