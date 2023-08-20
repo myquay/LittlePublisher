@@ -2,3 +2,10 @@
 @model LittlePublisher.Web.Pages.Account.SignInModel
 @{
 }
+
+<form method="get">
+    @Html.ValidationMessage("me")
+    <input type="text" id="me" name="me" />
+    <input type="hidden" value="/" name="redirectUri" id="redirectUri" />
+    <input type="submit" value="Sign in" />
+</form>
