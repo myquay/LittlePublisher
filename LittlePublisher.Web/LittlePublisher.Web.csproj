@@ -11,13 +11,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\IndieAuth\IndieAuth.csproj" />
-    <ProjectReference Include="..\Micropub\Micropub.csproj" />
+    <Folder Include="Pages\Shared\" />
+    <Folder Include="wwwroot\" />
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Pages\Shared\" />
-    <Folder Include="wwwroot\" />
+    <ProjectReference Include="..\..\IndieAuth\IndieAuth.csproj" />
   </ItemGroup>
 
 </Project>
