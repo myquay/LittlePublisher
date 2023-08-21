@@ -1,6 +1,4 @@
-using IndieAuth;
-using IndieAuth.Authentication;
-using IndieAuth.Extensions;
+using AspNet.Security.IndieAuth;
 using LittlePublisher.Web.Infrastructure;
 using Microformats;
 using Microsoft.AspNetCore.Authentication;

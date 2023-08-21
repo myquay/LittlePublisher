@@ -1,5 +1,4 @@
-using IndieAuth;
-using IndieAuth.Authentication;
+using AspNet.Security.IndieAuth;
 using LittlePublisher.Web.Configuration;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;

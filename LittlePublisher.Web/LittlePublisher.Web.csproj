@@ -16,7 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\IndieAuth\IndieAuth.csproj" />
+    <ProjectReference Include="..\..\IndieAuth\AspNet.Security.IndieAuth.csproj" />
   </ItemGroup>
 
 </Project>
