@@ -16,20 +16,6 @@ var authBuilder = builder.Services.AddAuthentication()
                 .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme, options =>
                 {
                     options.LoginPath = "/account/sign-in";
-                    
-                    options.Events.OnRedirectToLogin = context =>
-                    {
-                        //User we are attempting to sign in as
-                        if (context.Properties.Items.TryGetValue("me", out string? me) && me != null)
-                            context.RedirectUri = QueryHelpers.AddQueryString(context.RedirectUri, "me", me);
-
-                        //Client we are attempting to sign in for
-                        if (context.Properties.Items.TryGetValue("client_id", out string? clientId) && clientId != null)
-                            context.RedirectUri = QueryHelpers.AddQueryString(context.RedirectUri, "client_id", clientId);
-
-                        context.Response.Redirect(context.RedirectUri);
-                        return Task.CompletedTask;
-                    };
                 })
                 .AddIndieAuth(IndieAuthDefaults.AuthenticationScheme, options =>
                 {
