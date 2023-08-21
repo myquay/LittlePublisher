@@ -1,11 +1,11 @@
 ﻿@page
 @model LittlePublisher.Web.Pages.Account.SignInModel
-@{
-}
 
-<form method="get">
+<form method="post">
+    @Html.AntiForgeryToken()
     @Html.ValidationMessage("me")
-    <input type="text" id="me" name="me" />
-    <input type="hidden" value="/" name="redirectUri" id="redirectUri" />
+    <input type="text" id="me" name="me" value="@Model.Me" />
+    <input type="hidden" value="@Model.ReturnUrl" name="returnUrl" id="returnUrl" />
+
     <input type="submit" value="Sign in" />
 </form>

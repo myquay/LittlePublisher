@@ -1,6 +1,5 @@
 using IndieAuth;
 using IndieAuth.Authentication;
-using IndieAuth.Claims;
 using LittlePublisher.Web.Configuration;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -15,7 +14,7 @@ var builder = WebApplication.CreateBuilder(args);
 var config = builder.Configuration.GetSection("App").Get<AppConfiguration>();
 
 var authBuilder = builder.Services.AddAuthentication()
-                .AddCookie(IndieAuthDefaults.ExternalCookieSignInScheme, options =>
+                .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme, options =>
                 {
                     options.LoginPath = "/account/sign-in";
                     
@@ -35,32 +34,14 @@ var authBuilder = builder.Services.AddAuthentication()
                 })
                 .AddIndieAuth(IndieAuthDefaults.AuthenticationScheme, options =>
                 {
-                    options.Issuer = config.Host;
-                    options.Scopes = new[] { "profile", "create", "update", "delete", "media" };
-
-                    options.AuthorizationEndpoint = "/indie-auth/authorization";
-                    options.TokenEndpoint = "/indie-auth/token";
-                    options.IntrospectionEndpoint = "/indie-auth/token-info";
-
-                    options.ExternalSignInScheme = IndieAuthDefaults.ExternalCookieSignInScheme;
-
+                    options.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+                    options.ClientId = config.IndieAuth.ClientId;
+                    options.CallbackPath = "/authentication/indie-auth/callback";
                 });
-
-if (config.IndieAuth.GitHub.Enabled)
-{
-    authBuilder.AddGitHub(IndieAuthMethod.GITHUB, options =>
-    {
-        options.SignInScheme = IndieAuthDefaults.ExternalCookieSignInScheme;
-        options.ClientId = config.IndieAuth.GitHub.ClientId;
-        options.ClientSecret = config.IndieAuth.GitHub.ClientSecret;
-        options.CallbackPath = "/indie-auth/process/github";
-        options.Events.OnTicketReceived = IndieAuthClaims.OnGitHubTicketReceived; 
-    });
-}
 
 builder.Services.AddAuthorization(options =>
 {
-    options.DefaultPolicy = new AuthorizationPolicyBuilder(IndieAuthDefaults.ExternalCookieSignInScheme)
+    options.DefaultPolicy = new AuthorizationPolicyBuilder(CookieAuthenticationDefaults.AuthenticationScheme)
         .RequireAuthenticatedUser()
         .Build();
 });
@@ -70,14 +51,7 @@ builder.Services.AddRazorPages().AddRazorPagesOptions(options =>
     options.Conventions.AddPageRoute("/Account/SignIn", "/account/sign-in");
 });
 
-builder.Services.AddSingleton<HttpClient>((a) =>
-{
-    var client = new HttpClient();
-
-    client.DefaultRequestHeaders.Add("User-Agent", "IndieAuth.NET/1.0");
-
-    return client;
-});
+builder.Services.AddSingleton(new HttpClient());
 
 var app = builder.Build();
 
@@ -94,6 +68,6 @@ app.UseAuthorization();
 app.UseAuthentication();
 
 app.MapRazorPages();
-app.MapGet("/", () => "A lightweight .NET IndieAuth server").RequireAuthorization();
+app.MapGet("/", () => "A MicroPub endpoint").RequireAuthorization();
 
 app.Run();

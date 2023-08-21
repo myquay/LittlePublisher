@@ -1,12 +1,13 @@
 using IndieAuth;
 using IndieAuth.Authentication;
-using IndieAuth.Claims;
-using IndieAuth.Discovery;
+using IndieAuth.Extensions;
 using LittlePublisher.Web.Infrastructure;
 using Microformats;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using System.Diagnostics.Metrics;
 using System.Text.Json;
 
 namespace LittlePublisher.Web.Pages.Account
@@ -15,42 +16,57 @@ namespace LittlePublisher.Web.Pages.Account
     {
         HttpClient client;
 
+        [BindProperty]
+        public string? Me { get; set; }
+
+        [BindProperty]
+        public string? ReturnUrl { get; set; }
+
         public SignInModel(HttpClient client)
         {
             this.client = client;
         }
 
-        public async Task<IActionResult> OnGet(string me, string? auth_method = null, string? returnUrl = null)
+        public async Task<IActionResult> OnGet(string? me = null, string? returnUrl = null)
         {
-            var user = await HttpContext.AuthenticateAsync(IndieAuthDefaults.ExternalCookieSignInScheme);
+            Me = me?.Canonicalize();
+            ReturnUrl = returnUrl;
+
+            var user = await HttpContext.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme);
 
             if (!user.Succeeded)
             {
-                //If we have a me value, we can use that to pre-populate the login form
-                if (string.IsNullOrEmpty(me))
-                    return Page();
-
-                var authMethods = await new RelMeAuthDiscoveryClient(client).DiscoverSupportedAuthenticationMethods(me);
-                if (auth_method != null)
-                    authMethods = authMethods.Where(authMethods => authMethods == auth_method).ToArray();
-
-                //No available auth methods
-                if(!authMethods.Any())
-                {
-                    ModelState.AddModelError("me", $"The website '{me}' does not list any of the supported authentication methods ({String.Join(", ", authMethods)}).");
-                    return Page();
-                }
-
-                //If we have multiple auth methods, we need to ask the user which one they want to use
-                if (authMethods.Length > 1)
-                    return RedirectToPage("ChooseAuthMethod", new { me });
-
-                //Sign in using specified authentication method
-                return Challenge(authMethods.Single());
+                return Page();
             }
             else
             {
                 return Redirect(returnUrl ?? "/");
+            }
+        }
+
+        public async Task<IActionResult> OnPost()
+        {
+            Me = Me?.Canonicalize();
+            var user = await HttpContext.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+
+            if (!user.Succeeded)
+            {
+                if(String.IsNullOrEmpty(Me) || !Uri.IsWellFormedUriString(Me, UriKind.Absolute))
+                    ModelState.AddModelError("me", "You must provide a valid URL");
+
+                if (!ModelState.IsValid)
+                    return await OnGet(Me, ReturnUrl);
+
+                return Challenge(new IndieAuthChallengeProperties
+                {
+                    Me = Me!,
+                    Scope = new[] { "profile", "create" },
+                    RedirectUri = ReturnUrl
+                }, IndieAuthDefaults.AuthenticationScheme);
+            }
+            else
+            {
+                return Redirect(ReturnUrl ?? "/");
             }
         }
     }

@@ -11,10 +11,5 @@ namespace LittlePublisher.Web.Configuration
         /// </summary>
         public string ClientId { get; set; } = default!;
 
-        /// <summary>
-        /// GitHub Authentication provider settings
-        /// </summary>
-        public GitHubConfiguration GitHub { get; set; } = default!;
-
     }
 }
