@@ -5,8 +5,6 @@ VisualStudioVersion = 17.6.33829.357
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LittlePublisher.Web", "LittlePublisher.Web\LittlePublisher.Web.csproj", "{E5795321-C7A6-41D9-A39A-73076E1FF10D}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AspNet.Security.IndieAuth", "..\IndieAuth\AspNet.Security.IndieAuth.csproj", "{FECF7C88-0934-4317-8596-4E88A2BC0236}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -17,10 +15,6 @@ Global
 		{E5795321-C7A6-41D9-A39A-73076E1FF10D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E5795321-C7A6-41D9-A39A-73076E1FF10D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E5795321-C7A6-41D9-A39A-73076E1FF10D}.Release|Any CPU.Build.0 = Release|Any CPU
-		{FECF7C88-0934-4317-8596-4E88A2BC0236}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{FECF7C88-0934-4317-8596-4E88A2BC0236}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{FECF7C88-0934-4317-8596-4E88A2BC0236}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{FECF7C88-0934-4317-8596-4E88A2BC0236}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

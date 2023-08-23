@@ -1,12 +1,10 @@
 using AspNet.Security.IndieAuth;
-using LittlePublisher.Web.Infrastructure;
-using Microformats;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using System.Diagnostics.Metrics;
-using System.Text.Json;
+using System.Net;
+using System.Net.Sockets;
 
 namespace LittlePublisher.Web.Pages.Account
 {
@@ -49,8 +47,14 @@ namespace LittlePublisher.Web.Pages.Account
 
             if (!user.Succeeded)
             {
-                if(String.IsNullOrEmpty(Me) || !Uri.IsWellFormedUriString(Me, UriKind.Absolute))
+                try
+                {
+                    if (String.IsNullOrEmpty(Me) || !Uri.IsWellFormedUriString(Me, UriKind.Absolute) || Dns.GetHostEntry(new Uri(Me).Host).AddressList.Length == 0)
+                        ModelState.AddModelError("me", "You must provide a valid URL");
+                }catch(SocketException)
+                {
                     ModelState.AddModelError("me", "You must provide a valid URL");
+                }
 
                 if (!ModelState.IsValid)
                     return await OnGet(Me, ReturnUrl);

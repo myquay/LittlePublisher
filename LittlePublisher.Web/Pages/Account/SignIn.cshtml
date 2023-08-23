@@ -1,11 +1,27 @@
 ﻿@page
 @model LittlePublisher.Web.Pages.Account.SignInModel
 
-<form method="post">
-    @Html.AntiForgeryToken()
-    @Html.ValidationMessage("me")
-    <input type="text" id="me" name="me" value="@Model.Me" />
-    <input type="hidden" value="@Model.ReturnUrl" name="returnUrl" id="returnUrl" />
-
-    <input type="submit" value="Sign in" />
-</form>
+<main class="container">
+    <article class="grid">
+        <div>
+            <hgroup>
+                <h1>Sign in</h1>
+                <h2>IndieWeb services</h2>
+            </hgroup>
+            <form method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" value="@Model.ReturnUrl" name="returnUrl" id="returnUrl" />
+                <input type="text" 
+                    id="me" 
+                    name="me" 
+                    value="@Model.Me"
+                    placeholder="Domain"
+                    aria-label="Domain"
+                    autocomplete="on"
+                       required />
+                @Html.ValidationMessage("me")
+                <button type="submit" class="contrast">Sign in</button>
+            </form>
+        </div>
+    </article>
+</main>
