@@ -11,6 +11,8 @@
             <form method="post">
                 @Html.AntiForgeryToken()
                 <input type="hidden" value="@Model.ReturnUrl" name="returnUrl" id="returnUrl" />
+                @if(!ModelState.IsValid)
+                    @Html.ValidationMessage("me", new { @class = "alert alert-danger"})
                 <input type="text" 
                     id="me" 
                     name="me" 
@@ -19,7 +21,6 @@
                     aria-label="Domain"
                     autocomplete="on"
                        required />
-                @Html.ValidationMessage("me")
                 <button type="submit" class="contrast">Sign in</button>
             </form>
         </div>
