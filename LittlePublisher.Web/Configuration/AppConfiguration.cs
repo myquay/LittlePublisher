@@ -1,4 +1,4 @@
-﻿namespace LittlePublisher.Web.Configuration
+﻿﻿namespace LittlePublisher.Web.Configuration
 {
     /// <summary>
     /// Little Publisher's App configuration
@@ -14,5 +14,10 @@
         /// Gets or sets the IndieAuth configuration.
         /// </summary>
         public IndieAuthConfiguration IndieAuth { get; set; } = default!;
+
+        /// <summary>
+        /// Gets or sets the JWT configuration.
+        /// </summary>
+        public JwtConfiguration Jwt { get; set; } = default!;
     }
 }

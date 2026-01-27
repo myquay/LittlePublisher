@@ -12,7 +12,7 @@
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
-.plans
+# .plans
 
 # Mono auto generated files
 mono_crash.*
@@ -398,3 +398,17 @@ FodyWeavers.xsd
 # JetBrains Rider
 *.sln.iml
 /LittlePublisher.Web/appsettings.Development.json
+# Node/Vue
+node_modules/
+client-app/dist/
+# Vue build output in wwwroot
+LittlePublisher.Web/wwwroot/assets/
+LittlePublisher.Web/wwwroot/index.html
+LittlePublisher.Web/wwwroot/favicon.ico
+# Environment files with secrets
+.env.local
+.env.*.local
+appsettings.*.local.json
+# OS
+.DS_Store
+Thumbs.db

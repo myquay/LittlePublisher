@@ -1,59 +1,105 @@
+using System.Text;
 using AspNet.Security.IndieAuth;
 using LittlePublisher.Web.Configuration;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.WebUtilities;
-using System.Linq.Expressions;
-using System.Security.Claims;
+using LittlePublisher.Web.Services;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var config = builder.Configuration.GetSection("App").Get<AppConfiguration>();
+// Configuration
+var config = builder.Configuration.GetSection("App").Get<AppConfiguration>()
+    ?? throw new InvalidOperationException("App configuration not found");
+builder.Services.AddSingleton(config);
 
-var authBuilder = builder.Services.AddAuthentication()
-                .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme, options =>
-                {
-                    options.LoginPath = "/account/sign-in";
-                })
-                .AddIndieAuth(IndieAuthDefaults.AuthenticationScheme, options =>
-                {
-                    options.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-                    options.ClientId = config.IndieAuth.ClientId;
-                    options.CallbackPath = "/authentication/indie-auth/callback";
-                });
-
-builder.Services.AddAuthorization(options =>
+// Authentication
+builder.Services.AddAuthentication(options =>
 {
-    options.DefaultPolicy = new AuthorizationPolicyBuilder(CookieAuthenticationDefaults.AuthenticationScheme)
-        .RequireAuthenticatedUser()
-        .Build();
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        ValidIssuer = config.Jwt.Issuer,
+        ValidAudience = config.Jwt.Audience,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(config.Jwt.SecretKey))
+    };
+})
+.AddIndieAuth(IndieAuthDefaults.AuthenticationScheme, options =>
+{
+    options.ClientId = config.IndieAuth.ClientId;
+    options.CallbackPath = "/api/auth/indie-callback";
 });
 
-builder.Services.AddRazorPages().AddRazorPagesOptions(options =>
-{
-    options.Conventions.AddPageRoute("/Account/SignIn", "/account/sign-in");
-});
+builder.Services.AddAuthorization();
 
-builder.Services.AddSingleton(new HttpClient());
+// Services
+builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
+builder.Services.AddHttpClient();
+
+// Controllers
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+
+// CORS
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("Development", policy =>
+    {
+        policy.WithOrigins("http://localhost:5173", "https://localhost:5001")
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials();
+    });
+
+    options.AddPolicy("Production", policy =>
+    {
+        policy.WithOrigins(config.Host)
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials();
+    });
+});
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// Error handling
 if (!app.Environment.IsDevelopment())
 {
-    app.UseExceptionHandler("/Error");
+    app.UseExceptionHandler("/error");
     app.UseHsts();
 }
 
 app.UseHttpsRedirection();
+
+// CORS
+if (app.Environment.IsDevelopment())
+{
+    app.UseCors("Development");
+}
+else
+{
+    app.UseCors("Production");
+}
+
+// Authentication & Authorization
+app.UseAuthentication();
+app.UseAuthorization();
+
+// Static files and SPA
+app.UseDefaultFiles();
 app.UseStaticFiles();
 
-app.UseAuthorization();
-app.UseAuthentication();
+// API routes
+app.MapControllers();
 
-app.MapRazorPages();
-app.MapGet("/", () => "A MicroPub endpoint").RequireAuthorization();
+// SPA fallback
+app.MapFallbackToFile("index.html");
 
 app.Run();

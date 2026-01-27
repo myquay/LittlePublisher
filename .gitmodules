@@ -4,3 +4,6 @@
 [submodule "IndieAuth"]
 	path = IndieAuth
 	url = https://github.com/myquay/IndieAuth.git
+[submodule "lib/IndieAuth"]
+	path = lib/IndieAuth
+	url = https://github.com/myquay/IndieAuth.git
