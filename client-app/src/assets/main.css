@@ -1,0 +1,9 @@
+/* Custom styles for LilPub */
+:root {
+  --pico-font-family: system-ui, -apple-system, sans-serif;
+}
+
+nav {
+  background: var(--pico-card-background-color);
+  box-shadow: var(--pico-card-box-shadow);
+}
