@@ -414,3 +414,4 @@ appsettings.*.local.json
 Thumbs.db
 .plans/*
 .idea/*
+.vscode/*
