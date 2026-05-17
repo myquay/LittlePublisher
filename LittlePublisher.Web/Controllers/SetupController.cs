@@ -44,7 +44,7 @@ public class SetupController : ControllerBase
                 Required("App:GitHub:Branch", _config.GitHub.Branch, "Branch LittlePublisher should commit to."),
                 Required("App:GitHub:Username", _config.GitHub.Username, "GitHub username for repository writes."),
                 Secret("App:GitHub:Token", _config.GitHub.Token, "GitHub token with permission to push website changes."),
-                Required("App:GitHub:ContentPath", _config.GitHub.ContentPath, "Repository-relative folder for generated posts.")
+                Required("App:GitHub:ContentPath", _config.GitHub.ContentPath, "Repository-relative Hugo content root, for example blog/content.")
             }),
             new SetupGroup("Durable storage", new[]
             {
@@ -54,6 +54,13 @@ public class SetupController : ControllerBase
             new SetupGroup("Authentication", new[]
             {
                 Required("App:IndieAuth:ClientId", _config.IndieAuth.ClientId, "Client ID used for IndieAuth login."),
+                Required("App:ExternalToken:Enabled", _config.ExternalToken.Enabled ? "true" : null, "Enable access tokens from an external IndieAuth server for Micropub clients."),
+                ExternalTokenSetting("App:ExternalToken:Mode", _config.ExternalToken.Mode, "External token validation mode: Jwt or Introspection."),
+                ExternalJwtSetting("App:ExternalToken:Issuer", _config.ExternalToken.Issuer, "External JWT issuer."),
+                ExternalJwtSetting("App:ExternalToken:Audience", _config.ExternalToken.Audience, "External JWT audience."),
+                ExternalJwtSecret("App:ExternalToken:SecretKey", _config.ExternalToken.SecretKey, "External JWT signing key."),
+                ExternalIntrospectionSetting("App:ExternalToken:IntrospectionEndpoint", _config.ExternalToken.IntrospectionEndpoint, "External token introspection endpoint."),
+                ExternalIntrospectionSecret("App:ExternalToken:IntrospectionToken", _config.ExternalToken.IntrospectionToken, "Bearer token used to authenticate introspection requests."),
                 Required("App:Jwt:Issuer", _config.Jwt.Issuer, "JWT issuer."),
                 Required("App:Jwt:Audience", _config.Jwt.Audience, "JWT audience."),
                 Secret("App:Jwt:SecretKey", _config.Jwt.SecretKey, "JWT signing key with at least 32 characters.")
@@ -111,6 +118,51 @@ public class SetupController : ControllerBase
             Configured: configured,
             Warning: configured && LooksLikePlaceholder(value),
             DisplayValue: configured ? "Configured" : null);
+    }
+
+    private SetupCheck ExternalTokenSetting(string key, string? value, string description)
+    {
+        return _config.ExternalToken.Enabled
+            ? Required(key, value, description)
+            : Optional(key, value, description);
+    }
+
+    private SetupCheck ExternalJwtSetting(string key, string? value, string description)
+    {
+        return _config.ExternalToken.Enabled && IsExternalJwtMode()
+            ? Required(key, value, description)
+            : Optional(key, value, description);
+    }
+
+    private SetupCheck ExternalJwtSecret(string key, string? value, string description)
+    {
+        return _config.ExternalToken.Enabled && IsExternalJwtMode()
+            ? Secret(key, value, description)
+            : Optional(key, value, description);
+    }
+
+    private SetupCheck ExternalIntrospectionSetting(string key, string? value, string description)
+    {
+        return _config.ExternalToken.Enabled && IsExternalIntrospectionMode()
+            ? Required(key, value, description)
+            : Optional(key, value, description);
+    }
+
+    private SetupCheck ExternalIntrospectionSecret(string key, string? value, string description)
+    {
+        return _config.ExternalToken.Enabled && IsExternalIntrospectionMode()
+            ? Secret(key, value, description)
+            : Optional(key, value, description);
+    }
+
+    private bool IsExternalJwtMode()
+    {
+        return string.Equals(_config.ExternalToken.Mode, "Jwt", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool IsExternalIntrospectionMode()
+    {
+        return string.Equals(_config.ExternalToken.Mode, "Introspection", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool HasConfiguredValue(string? value)

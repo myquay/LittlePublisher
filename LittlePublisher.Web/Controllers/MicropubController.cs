@@ -1,10 +1,12 @@
 using System.Security.Claims;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using AspNet.Security.IndieAuth;
 using AspNet.Security.IndieAuth.Infrastructure;
 using LittlePublisher.Web.Configuration;
+using LittlePublisher.Web.Services.Publishing;
 using LittlePublisher.Web.Services.Storage;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -14,14 +16,20 @@ namespace LittlePublisher.Web.Controllers;
 [Route("micropub")]
 public class MicropubController : ControllerBase
 {
+    private const string ExternalMicropubTokenScheme = "ExternalMicropubToken";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly AppConfiguration _config;
+    private readonly IPublishingService _publishingService;
     private readonly IPublisherStorage _storage;
 
-    public MicropubController(AppConfiguration config, IPublisherStorage storage)
+    public MicropubController(
+        AppConfiguration config,
+        IPublishingService publishingService,
+        IPublisherStorage storage)
     {
         _config = config;
+        _publishingService = publishingService;
         _storage = storage;
     }
 
@@ -38,7 +46,7 @@ public class MicropubController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize]
+    [Authorize(Policy = "MicropubToken")]
     public async Task<IActionResult> Post(CancellationToken cancellationToken)
     {
         if (!IsConfiguredUser())
@@ -73,12 +81,17 @@ public class MicropubController : ControllerBase
             return BadRequest(new MicropubError("invalid_request", "A Micropub entry requires content or name."));
         }
 
-        var publishedUtc = entry.Published ?? DateTimeOffset.UtcNow;
-        var publishedUrl = BuildPublishedUrl(entry, publishedUtc);
-        var propertiesJson = JsonSerializer.Serialize(ToSourceProperties(entry, publishedUrl, publishedUtc), JsonOptions);
+        var publishRequest = new PublishCreateRequest(
+            Name: entry.Name,
+            Content: entry.Content ?? entry.Name ?? string.Empty,
+            Summary: entry.Summary,
+            Categories: entry.Categories,
+            PublishedUtc: entry.Published ?? DateTimeOffset.UtcNow,
+            Slug: PublishingService.BuildSlug(entry.Name, entry.Content ?? entry.Name ?? string.Empty));
         var requestJson = JsonSerializer.Serialize(entry, JsonOptions);
 
         PublishJobRecord? job = null;
+        PublishCreateResult publishResult;
 
         try
         {
@@ -90,21 +103,27 @@ public class MicropubController : ControllerBase
                     RequestJson: requestJson),
                 cancellationToken);
 
+            publishResult = await _publishingService.PublishCreateAsync(publishRequest, cancellationToken);
+
+            var propertiesJson = JsonSerializer.Serialize(
+                ToSourceProperties(entry, publishResult.Url, publishRequest.PublishedUtc),
+                JsonOptions);
+
             await _storage.SavePublishedItemAsync(
                 new NewPublishedItem(
-                    Url: publishedUrl,
+                    Url: publishResult.Url,
                     Title: entry.Name,
-                    Content: entry.Content ?? entry.Name ?? string.Empty,
+                    Content: publishRequest.Content,
                     Categories: entry.Categories,
-                    PublishedUtc: publishedUtc,
-                    FilePath: BuildContentPath(entry, publishedUtc),
-                    CommitSha: null,
+                    PublishedUtc: publishRequest.PublishedUtc,
+                    FilePath: publishResult.FilePath,
+                    CommitSha: publishResult.CommitSha,
                     PropertiesJson: propertiesJson),
                 cancellationToken);
 
-            await _storage.CompletePublishJobAsync(job.Id, publishedUrl, cancellationToken);
+            await _storage.CompletePublishJobAsync(job.Id, publishResult.Url, cancellationToken);
         }
-        catch (Exception ex) when (ex is InvalidOperationException or Azure.RequestFailedException)
+        catch (Exception ex) when (ex is InvalidOperationException or Azure.RequestFailedException or IOException)
         {
             if (job is not null)
             {
@@ -114,16 +133,18 @@ public class MicropubController : ControllerBase
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new MicropubError("temporarily_unavailable", ex.Message));
         }
 
-        Response.Headers.Location = publishedUrl;
+        Response.Headers.Location = publishResult.Url;
 
-        return Created(publishedUrl, new { url = publishedUrl });
+        return Created(publishResult.Url, new { url = publishResult.Url });
     }
 
     private async Task<IActionResult> GetSourceAsync(string? url, CancellationToken cancellationToken)
     {
-        if (!User.Identity?.IsAuthenticated ?? true)
+        if (!await TryAuthenticateMicropubTokenAsync())
         {
-            return Challenge();
+            return Challenge(_config.ExternalToken.Enabled
+                ? [ExternalMicropubTokenScheme]
+                : []);
         }
 
         if (!IsConfiguredUser())
@@ -151,6 +172,24 @@ public class MicropubController : ControllerBase
         {
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new MicropubError("temporarily_unavailable", ex.Message));
         }
+    }
+
+    private async Task<bool> TryAuthenticateMicropubTokenAsync()
+    {
+        if (!_config.ExternalToken.Enabled)
+        {
+            return false;
+        }
+
+        var externalResult = await HttpContext.AuthenticateAsync(ExternalMicropubTokenScheme);
+
+        if (externalResult.Succeeded && externalResult.Principal is not null)
+        {
+            HttpContext.User = externalResult.Principal;
+            return true;
+        }
+
+        return false;
     }
 
     private object GetConfigResponse()
@@ -234,24 +273,6 @@ public class MicropubController : ControllerBase
             ["type"] = new[] { "h-entry" },
             ["properties"] = properties
         };
-    }
-
-    private string BuildPublishedUrl(MicropubEntry entry, DateTimeOffset publishedUtc)
-    {
-        var slugSource = entry.Name ?? entry.Content ?? "post";
-        var slug = Slugify(slugSource);
-        var baseUrl = _config.Website.Url.TrimEnd('/');
-
-        return $"{baseUrl}/{publishedUtc:yyyy/MM/dd}/{slug}/";
-    }
-
-    private string BuildContentPath(MicropubEntry entry, DateTimeOffset publishedUtc)
-    {
-        var slugSource = entry.Name ?? entry.Content ?? "post";
-        var slug = Slugify(slugSource);
-        var contentPath = _config.GitHub.ContentPath.Trim('/');
-
-        return $"{contentPath}/{publishedUtc:yyyy-MM-dd}-{slug}.md";
     }
 
     private bool IsConfiguredUser()
@@ -361,18 +382,6 @@ public class MicropubController : ControllerBase
         }
 
         return value.StartsWith("h-", StringComparison.OrdinalIgnoreCase) ? value[2..] : value;
-    }
-
-    private static string Slugify(string value)
-    {
-        var slug = Regex.Replace(value.ToLowerInvariant(), "[^a-z0-9]+", "-").Trim('-');
-
-        if (slug.Length > 64)
-        {
-            slug = slug[..64].Trim('-');
-        }
-
-        return string.IsNullOrWhiteSpace(slug) ? "post" : slug;
     }
 
     private record MicropubEntry(

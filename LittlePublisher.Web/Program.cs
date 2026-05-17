@@ -1,6 +1,7 @@
 using System.Text;
 using AspNet.Security.IndieAuth;
 using LittlePublisher.Web.Configuration;
+using LittlePublisher.Web.Services.Publishing;
 using LittlePublisher.Web.Services;
 using LittlePublisher.Web.Services.Storage;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -15,7 +16,7 @@ var config = builder.Configuration.GetSection("App").Get<AppConfiguration>()
 builder.Services.AddSingleton(config);
 
 // Authentication
-builder.Services.AddAuthentication(options =>
+var authenticationBuilder = builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
     options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -49,11 +50,60 @@ builder.Services.AddAuthentication(options =>
     options.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
 });
 
-builder.Services.AddAuthorization();
+const string externalMicropubTokenScheme = "ExternalMicropubToken";
+
+if (config.ExternalToken.Enabled &&
+    string.Equals(config.ExternalToken.Mode, "Jwt", StringComparison.OrdinalIgnoreCase))
+{
+    authenticationBuilder.AddJwtBearer(externalMicropubTokenScheme, options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = config.ExternalToken.Issuer,
+            ValidAudience = config.ExternalToken.Audience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(config.ExternalToken.SecretKey)),
+            ClockSkew = TimeSpan.FromMinutes(1)
+        };
+    });
+}
+else if (config.ExternalToken.Enabled &&
+    string.Equals(config.ExternalToken.Mode, "Introspection", StringComparison.OrdinalIgnoreCase))
+{
+    authenticationBuilder.AddIndieAuthBearer(externalMicropubTokenScheme, options =>
+    {
+        options.IntrospectionEndpoint = config.ExternalToken.IntrospectionEndpoint;
+        options.IntrospectionAuthenticationMethod = IntrospectionAuthMethod.Bearer;
+        options.IntrospectionToken = config.ExternalToken.IntrospectionToken;
+        options.RequireHttpsMetadata = config.ExternalToken.RequireHttpsMetadata;
+    });
+}
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("MicropubToken", policy =>
+    {
+        if (config.ExternalToken.Enabled)
+        {
+            policy.AddAuthenticationSchemes(externalMicropubTokenScheme);
+            policy.RequireAuthenticatedUser();
+        }
+        else
+        {
+            policy.RequireAssertion(_ => false);
+        }
+    });
+});
 
 // Services
 builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
 builder.Services.AddSingleton<IPublisherStorage, TableStoragePublisherStorage>();
+builder.Services.AddSingleton<IContentGenerator, MarkdownContentGenerator>();
+builder.Services.AddSingleton<IWebsiteRepository, GitCliWebsiteRepository>();
+builder.Services.AddSingleton<IPublishingService, PublishingService>();
 builder.Services.AddHttpClient();
 
 // Controllers

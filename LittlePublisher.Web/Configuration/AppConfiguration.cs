@@ -31,6 +31,11 @@ namespace LittlePublisher.Web.Configuration
         public IndieAuthConfiguration IndieAuth { get; set; } = new();
 
         /// <summary>
+        /// Gets or sets external Micropub access token validation configuration.
+        /// </summary>
+        public ExternalTokenConfiguration ExternalToken { get; set; } = new();
+
+        /// <summary>
         /// Gets or sets the JWT configuration.
         /// </summary>
         public JwtConfiguration Jwt { get; set; } = new();

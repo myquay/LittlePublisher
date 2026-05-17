@@ -26,7 +26,8 @@ public class GitHubConfiguration
     public string Token { get; set; } = default!;
 
     /// <summary>
-    /// Repository-relative path where generated content should be written.
+    /// Repository-relative Hugo content root where generated content should be written.
+    /// LittlePublisher creates post and note section folders under this path.
     /// </summary>
-    public string ContentPath { get; set; } = "content/posts";
+    public string ContentPath { get; set; } = "blog/content";
 }
