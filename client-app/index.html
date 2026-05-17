@@ -6,11 +6,19 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="redirect_uri" href="/api/auth/callback">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LittlePublisher</title>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <main class="h-app h-x-app">
+        <img class="u-logo" src="/apple-touch-icon.png" alt="">
+        <h1 class="p-name">LittlePublisher</h1>
+        <a class="u-url" href="/">LittlePublisher</a>
+        <p class="p-summary">A cosy Micropub service for publishing to your own website.</p>
+      </main>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
