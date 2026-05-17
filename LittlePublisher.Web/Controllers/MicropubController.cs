@@ -143,6 +143,7 @@ public class MicropubController : ControllerBase
         if (!await TryAuthenticateMicropubTokenAsync())
         {
             return Challenge(_config.ExternalToken.Enabled
+                && _config.ExternalToken.IsSupportedMode
                 ? [ExternalMicropubTokenScheme]
                 : []);
         }
@@ -176,7 +177,7 @@ public class MicropubController : ControllerBase
 
     private async Task<bool> TryAuthenticateMicropubTokenAsync()
     {
-        if (!_config.ExternalToken.Enabled)
+        if (!_config.ExternalToken.Enabled || !_config.ExternalToken.IsSupportedMode)
         {
             return false;
         }

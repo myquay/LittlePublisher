@@ -5,6 +5,10 @@ namespace LittlePublisher.Web.Configuration;
 /// </summary>
 public class ExternalTokenConfiguration
 {
+    public const string JwtMode = "Jwt";
+
+    public const string IntrospectionMode = "Introspection";
+
     /// <summary>
     /// Enables accepting access tokens from a configured external IndieAuth server.
     /// </summary>
@@ -44,4 +48,12 @@ public class ExternalTokenConfiguration
     /// Requires HTTPS for the introspection endpoint.
     /// </summary>
     public bool RequireHttpsMetadata { get; set; } = true;
+
+    public bool IsJwtMode =>
+        string.Equals(Mode, JwtMode, StringComparison.OrdinalIgnoreCase);
+
+    public bool IsIntrospectionMode =>
+        string.Equals(Mode, IntrospectionMode, StringComparison.OrdinalIgnoreCase);
+
+    public bool IsSupportedMode => IsJwtMode || IsIntrospectionMode;
 }

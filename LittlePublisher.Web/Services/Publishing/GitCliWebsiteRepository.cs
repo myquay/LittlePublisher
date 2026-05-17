@@ -52,6 +52,21 @@ public class GitCliWebsiteRepository : IWebsiteRepository
         }
     }
 
+    public async Task CheckConnectionAsync(CancellationToken cancellationToken)
+    {
+        ValidateConfiguration();
+
+        var output = await RunGitAsync(
+            workingDirectory: Path.GetTempPath(),
+            arguments: ["ls-remote", "--heads", BuildAuthenticatedRemoteUrl(), _config.Branch],
+            cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(output))
+        {
+            throw new InvalidOperationException($"Git branch '{_config.Branch}' was not found.");
+        }
+    }
+
     private void ValidateConfiguration()
     {
         if (string.IsNullOrWhiteSpace(_config.RepositoryUrl))

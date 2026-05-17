@@ -55,7 +55,7 @@ public class SetupController : ControllerBase
             {
                 Required("App:IndieAuth:ClientId", _config.IndieAuth.ClientId, "Client ID used for IndieAuth login."),
                 Required("App:ExternalToken:Enabled", _config.ExternalToken.Enabled ? "true" : null, "Enable access tokens from an external IndieAuth server for Micropub clients."),
-                ExternalTokenSetting("App:ExternalToken:Mode", _config.ExternalToken.Mode, "External token validation mode: Jwt or Introspection."),
+                ExternalTokenModeSetting(),
                 ExternalJwtSetting("App:ExternalToken:Issuer", _config.ExternalToken.Issuer, "External JWT issuer."),
                 ExternalJwtSetting("App:ExternalToken:Audience", _config.ExternalToken.Audience, "External JWT audience."),
                 ExternalJwtSecret("App:ExternalToken:SecretKey", _config.ExternalToken.SecretKey, "External JWT signing key."),
@@ -120,13 +120,6 @@ public class SetupController : ControllerBase
             DisplayValue: configured ? "Configured" : null);
     }
 
-    private SetupCheck ExternalTokenSetting(string key, string? value, string description)
-    {
-        return _config.ExternalToken.Enabled
-            ? Required(key, value, description)
-            : Optional(key, value, description);
-    }
-
     private SetupCheck ExternalJwtSetting(string key, string? value, string description)
     {
         return _config.ExternalToken.Enabled && IsExternalJwtMode()
@@ -157,12 +150,29 @@ public class SetupController : ControllerBase
 
     private bool IsExternalJwtMode()
     {
-        return string.Equals(_config.ExternalToken.Mode, "Jwt", StringComparison.OrdinalIgnoreCase);
+        return _config.ExternalToken.IsJwtMode;
     }
 
     private bool IsExternalIntrospectionMode()
     {
-        return string.Equals(_config.ExternalToken.Mode, "Introspection", StringComparison.OrdinalIgnoreCase);
+        return _config.ExternalToken.IsIntrospectionMode;
+    }
+
+    private SetupCheck ExternalTokenModeSetting()
+    {
+        if (!_config.ExternalToken.Enabled)
+        {
+            return Optional("App:ExternalToken:Mode", _config.ExternalToken.Mode, "External token validation mode: Jwt or Introspection.");
+        }
+
+        return new SetupCheck(
+            Key: "App:ExternalToken:Mode",
+            Description: "External token validation mode: Jwt or Introspection.",
+            Required: true,
+            Secret: false,
+            Configured: _config.ExternalToken.IsSupportedMode,
+            Warning: false,
+            DisplayValue: _config.ExternalToken.IsSupportedMode ? _config.ExternalToken.Mode : null);
     }
 
     private static bool HasConfiguredValue(string? value)

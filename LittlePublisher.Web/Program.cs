@@ -51,9 +51,9 @@ var authenticationBuilder = builder.Services.AddAuthentication(options =>
 });
 
 const string externalMicropubTokenScheme = "ExternalMicropubToken";
+var externalMicropubTokenConfigured = config.ExternalToken.Enabled && config.ExternalToken.IsSupportedMode;
 
-if (config.ExternalToken.Enabled &&
-    string.Equals(config.ExternalToken.Mode, "Jwt", StringComparison.OrdinalIgnoreCase))
+if (config.ExternalToken.Enabled && config.ExternalToken.IsJwtMode)
 {
     authenticationBuilder.AddJwtBearer(externalMicropubTokenScheme, options =>
     {
@@ -70,8 +70,7 @@ if (config.ExternalToken.Enabled &&
         };
     });
 }
-else if (config.ExternalToken.Enabled &&
-    string.Equals(config.ExternalToken.Mode, "Introspection", StringComparison.OrdinalIgnoreCase))
+else if (config.ExternalToken.Enabled && config.ExternalToken.IsIntrospectionMode)
 {
     authenticationBuilder.AddIndieAuthBearer(externalMicropubTokenScheme, options =>
     {
@@ -86,7 +85,7 @@ builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("MicropubToken", policy =>
     {
-        if (config.ExternalToken.Enabled)
+        if (externalMicropubTokenConfigured)
         {
             policy.AddAuthenticationSchemes(externalMicropubTokenScheme);
             policy.RequireAuthenticatedUser();

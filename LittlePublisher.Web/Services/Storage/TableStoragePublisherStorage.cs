@@ -106,6 +106,57 @@ public class TableStoragePublisherStorage : IPublisherStorage
         return response.HasValue ? response.Value!.ToRecord() : null;
     }
 
+    public async Task<IReadOnlyList<PublishJobRecord>> GetRecentPublishJobsAsync(int take, CancellationToken cancellationToken)
+    {
+        await EnsureTablesAsync(cancellationToken);
+
+        var entities = new List<PublishJobEntity>();
+        await foreach (var entity in Jobs.QueryAsync<PublishJobEntity>(
+            filter: "PartitionKey eq 'job'",
+            cancellationToken: cancellationToken))
+        {
+            entities.Add(entity);
+        }
+
+        return entities
+            .OrderByDescending(entity => entity.CreatedUtc)
+            .Take(NormalizeTake(take))
+            .Select(entity => entity.ToRecord())
+            .ToArray();
+    }
+
+    public async Task<IReadOnlyList<PublishedItemRecord>> GetRecentPublishedItemsAsync(int take, CancellationToken cancellationToken)
+    {
+        await EnsureTablesAsync(cancellationToken);
+
+        var entities = new List<PublishedItemEntity>();
+        await foreach (var entity in Items.QueryAsync<PublishedItemEntity>(
+            filter: "PartitionKey eq 'item'",
+            cancellationToken: cancellationToken))
+        {
+            entities.Add(entity);
+        }
+
+        return entities
+            .OrderByDescending(entity => entity.PublishedUtc)
+            .Take(NormalizeTake(take))
+            .Select(entity => entity.ToRecord())
+            .ToArray();
+    }
+
+    public async Task CheckHealthAsync(CancellationToken cancellationToken)
+    {
+        await EnsureTablesAsync(cancellationToken);
+
+        await foreach (var _ in Jobs.QueryAsync<PublishJobEntity>(
+            filter: "PartitionKey eq 'job'",
+            maxPerPage: 1,
+            cancellationToken: cancellationToken))
+        {
+            break;
+        }
+    }
+
     private async Task EnsureTablesAsync(CancellationToken cancellationToken)
     {
         if (_initialized)
@@ -164,6 +215,11 @@ public class TableStoragePublisherStorage : IPublisherStorage
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(value));
 
         return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    private static int NormalizeTake(int take)
+    {
+        return Math.Clamp(take, 1, 50);
     }
 
     private sealed class PublishJobEntity : ITableEntity
