@@ -2,6 +2,7 @@ using System.Text;
 using AspNet.Security.IndieAuth;
 using LittlePublisher.Web.Configuration;
 using LittlePublisher.Web.Services;
+using LittlePublisher.Web.Services.Storage;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -52,6 +53,7 @@ builder.Services.AddAuthorization();
 
 // Services
 builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
+builder.Services.AddSingleton<IPublisherStorage, TableStoragePublisherStorage>();
 builder.Services.AddHttpClient();
 
 // Controllers
