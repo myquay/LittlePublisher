@@ -48,24 +48,26 @@ function goToLogin() {
 </script>
 
 <template>
-  <main class="container">
-    <article>
-      <div v-if="error">
-        <h3>Authentication Failed</h3>
-        <p class="error">{{ error }}</p>
-        <button @click="goToLogin" class="contrast">Try Again</button>
+  <main class="mx-auto flex min-h-[calc(100vh-57px)] max-w-6xl items-center px-4 py-8 sm:px-6">
+    <section class="w-full max-w-lg rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+      <div v-if="error" class="space-y-4">
+        <div>
+          <h1 class="text-xl font-semibold text-slate-950">Authentication failed</h1>
+          <p class="mt-2 text-sm text-red-700">{{ error }}</p>
+        </div>
+        <button
+          type="button"
+          class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800"
+          @click="goToLogin"
+        >
+          Try again
+        </button>
       </div>
 
-      <div v-else>
-        <p aria-busy="true">{{ status }}</p>
+      <div v-else class="flex items-center gap-3 text-slate-600">
+        <div class="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-800"></div>
+        <p>{{ status }}</p>
       </div>
-    </article>
+    </section>
   </main>
 </template>
-
-<style scoped>
-.error {
-  color: var(--pico-del-color);
-  margin-bottom: 1rem;
-}
-</style>

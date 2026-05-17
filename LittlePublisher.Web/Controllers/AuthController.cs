@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Sockets;
 using AspNet.Security.IndieAuth;
+using AspNet.Security.IndieAuth.Infrastructure;
+using LittlePublisher.Web.Configuration;
 using LittlePublisher.Web.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
@@ -15,31 +17,27 @@ namespace LittlePublisher.Web.Controllers;
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
 {
+    private readonly AppConfiguration _config;
     private readonly IJwtTokenService _jwtTokenService;
 
-    public AuthController(IJwtTokenService jwtTokenService)
+    public AuthController(AppConfiguration config, IJwtTokenService jwtTokenService)
     {
+        _config = config;
         _jwtTokenService = jwtTokenService;
     }
 
     /// <summary>
-    /// Initiates IndieAuth login flow.
+    /// Initiates IndieAuth login for the configured website.
     /// </summary>
-    /// <param name="me">The user's domain URL.</param>
     /// <returns>Challenge result that redirects to IndieAuth provider.</returns>
     [HttpGet("login")]
-    public IActionResult Login([FromQuery] string? me)
+    public IActionResult Login()
     {
-        if (string.IsNullOrWhiteSpace(me))
-        {
-            return Redirect("/login?error=me+parameter+is+required");
-        }
-
-        var canonicalMe = me.Canonicalize();
+        var canonicalMe = GetConfiguredMe();
 
         if (string.IsNullOrEmpty(canonicalMe))
         {
-            return Redirect("/login?error=Invalid+domain+format");
+            return Redirect("/login?error=Website+is+not+configured");
         }
 
         // Validate the URL
@@ -81,11 +79,17 @@ public class AuthController : ControllerBase
             return Redirect($"/login?error={Uri.EscapeDataString("Authentication failed")}");
         }
 
-        var me = result.Principal?.FindFirst("me")?.Value;
+        var me = result.Principal?.FindFirst(IndieAuthClaims.ME)?.Value;
+        var configuredMe = GetConfiguredMe();
 
         if (string.IsNullOrEmpty(me))
         {
             return Redirect($"/login?error={Uri.EscapeDataString("Could not determine user identity")}");
+        }
+
+        if (!string.Equals(me.Canonicalize(), configuredMe, StringComparison.OrdinalIgnoreCase))
+        {
+            return Redirect($"/login?error={Uri.EscapeDataString("Authenticated website does not match this LittlePublisher instance")}");
         }
 
         var token = _jwtTokenService.GenerateToken(me, result.Principal?.Claims);
@@ -102,8 +106,12 @@ public class AuthController : ControllerBase
     [Authorize]
     public IActionResult Me()
     {
-        var me = User.FindFirst("me")?.Value;
+        var me = User.FindFirst(IndieAuthClaims.ME)?.Value;
         return Ok(new { me });
     }
-}
 
+    private string? GetConfiguredMe()
+    {
+        return _config.Website.Url.Canonicalize();
+    }
+}

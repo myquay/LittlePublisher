@@ -415,3 +415,4 @@ Thumbs.db
 .plans/*
 .idea/*
 .vscode/*
+client-app/package-lock.json

@@ -3,7 +3,6 @@ import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 
 const route = useRoute()
-const me = ref('')
 const error = ref('')
 const isLoading = ref(false)
 
@@ -15,64 +14,39 @@ onMounted(() => {
   }
 })
 
-function handleSubmit() {
+function handleLogin() {
   error.value = ''
-
-  if (!me.value) {
-    error.value = 'Please enter your domain'
-    return
-  }
-
   isLoading.value = true
 
-  // Redirect browser to login endpoint - this will trigger the IndieAuth flow
-  const loginUrl = `/api/auth/login?me=${encodeURIComponent(me.value)}`
-  window.location.href = loginUrl
+  // The API owns the configured IndieAuth "me" URL. The UI never supplies a domain.
+  window.location.href = '/api/auth/login'
 }
 </script>
 
 <template>
-  <main class="container">
-    <article>
-      <header>
-        <hgroup>
-          <h2>LilPub</h2>
-          <p>Self-hosted publishing platform for your personal website</p>
-        </hgroup>
-      </header>
-
-      <div>
-        <p><small>Enter the domain of your IndieAuth enabled website to continue.</small></p>
-
-        <form @submit.prevent="handleSubmit">
-          <div v-if="error" class="error">{{ error }}</div>
-
-          <input
-            v-model="me"
-            type="text"
-            placeholder="https://your-domain.com"
-            aria-label="Domain"
-            autocomplete="url"
-            required
-            :disabled="isLoading"
-          />
-
-          <button type="submit" class="contrast" :disabled="isLoading">
-            {{ isLoading ? 'Redirecting...' : 'Sign in with IndieAuth' }}
-          </button>
-        </form>
+  <main class="mx-auto flex min-h-[calc(100vh-57px)] max-w-6xl items-center px-4 py-8 sm:px-6">
+    <section class="w-full max-w-lg rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+      <div class="mb-6">
+        <h1 class="text-2xl font-semibold text-slate-950">Welcome back</h1>
+        <p class="mt-2 text-sm text-slate-600">
+          Sign in with the website configured for this LittlePublisher instance.
+        </p>
       </div>
-    </article>
+
+      <div class="space-y-4">
+        <div v-if="error" class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {{ error }}
+        </div>
+
+        <button
+          type="button"
+          class="inline-flex w-full items-center justify-center rounded-md bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+          :disabled="isLoading"
+          @click="handleLogin"
+        >
+          {{ isLoading ? 'Redirecting...' : 'Log in' }}
+        </button>
+      </div>
+    </section>
   </main>
 </template>
-
-<style scoped>
-.error {
-  color: var(--pico-del-color);
-  margin-bottom: 1rem;
-  padding: 0.5rem;
-  background: var(--pico-del-color);
-  background-opacity: 0.1;
-  border-radius: var(--pico-border-radius);
-}
-</style>

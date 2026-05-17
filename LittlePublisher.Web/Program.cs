@@ -2,6 +2,7 @@ using System.Text;
 using AspNet.Security.IndieAuth;
 using LittlePublisher.Web.Configuration;
 using LittlePublisher.Web.Services;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 
@@ -17,6 +18,15 @@ builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
     options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultSignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+})
+.AddCookie(options =>
+{
+    // Cookie is only used as a temporary holder during the IndieAuth remote flow.
+    // It is not used for session-based auth; JWTs handle that.
+    options.Cookie.Name = "IndieAuth.Correlation";
+    options.Cookie.SameSite = SameSiteMode.Lax;
+    options.ExpireTimeSpan = TimeSpan.FromMinutes(5);
 })
 .AddJwtBearer(options =>
 {
@@ -35,6 +45,7 @@ builder.Services.AddAuthentication(options =>
 {
     options.ClientId = config.IndieAuth.ClientId;
     options.CallbackPath = "/api/auth/indie-callback";
+    options.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
 });
 
 builder.Services.AddAuthorization();
