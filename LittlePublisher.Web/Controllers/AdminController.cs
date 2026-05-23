@@ -12,11 +12,16 @@ public class AdminController : ControllerBase
 {
     private readonly IPublisherStorage _storage;
     private readonly IWebsiteRepository _websiteRepository;
+    private readonly IContentImportService _contentImportService;
 
-    public AdminController(IPublisherStorage storage, IWebsiteRepository websiteRepository)
+    public AdminController(
+        IPublisherStorage storage,
+        IWebsiteRepository websiteRepository,
+        IContentImportService contentImportService)
     {
         _storage = storage;
         _websiteRepository = websiteRepository;
+        _contentImportService = contentImportService;
     }
 
     [HttpGet("dashboard")]
@@ -58,6 +63,21 @@ public class AdminController : ControllerBase
             return Ok(new AdminCheckResponse(true, "GitHub repository is reachable."));
         }
         catch (Exception ex) when (ex is InvalidOperationException or IOException)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new AdminCheckResponse(false, ex.Message));
+        }
+    }
+
+    [HttpPost("import/repository")]
+    public async Task<IActionResult> ImportRepository([FromBody] ImportRepositoryRequest? request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _contentImportService.ImportRepositoryAsync(request ?? new ImportRepositoryRequest(), cancellationToken);
+
+            return Ok(result);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or Azure.RequestFailedException or IOException)
         {
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new AdminCheckResponse(false, ex.Message));
         }

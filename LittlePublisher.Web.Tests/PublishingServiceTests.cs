@@ -87,6 +87,11 @@ public class PublishingServiceTests
             return Task.FromResult("abc123");
         }
 
+        public Task<IReadOnlyList<WebsiteContentFile>> GetContentFilesAsync(CancellationToken cancellationToken)
+        {
+            return Task.FromResult<IReadOnlyList<WebsiteContentFile>>([]);
+        }
+
         public Task CheckConnectionAsync(CancellationToken cancellationToken)
         {
             return Task.CompletedTask;

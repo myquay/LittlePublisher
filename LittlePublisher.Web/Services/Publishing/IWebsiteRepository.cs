@@ -4,5 +4,7 @@ public interface IWebsiteRepository
 {
     Task<string> PublishFileAsync(string relativePath, string content, string commitMessage, CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<WebsiteContentFile>> GetContentFilesAsync(CancellationToken cancellationToken);
+
     Task CheckConnectionAsync(CancellationToken cancellationToken);
 }

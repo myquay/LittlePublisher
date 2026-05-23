@@ -211,6 +211,11 @@ public class SetupAndPublishingEdgeTests
             return Task.FromResult("commit");
         }
 
+        public Task<IReadOnlyList<WebsiteContentFile>> GetContentFilesAsync(CancellationToken cancellationToken)
+        {
+            return Task.FromResult<IReadOnlyList<WebsiteContentFile>>([]);
+        }
+
         public Task CheckConnectionAsync(CancellationToken cancellationToken)
         {
             return Task.CompletedTask;

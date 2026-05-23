@@ -11,7 +11,7 @@ public class AdminControllerTests
     [Fact]
     public async Task Dashboard_ReturnsRecentJobsAndItems()
     {
-        var controller = new AdminController(new StubStorage(), new StubWebsiteRepository());
+        var controller = new AdminController(new StubStorage(), new StubWebsiteRepository(), new StubContentImportService());
 
         var result = Assert.IsType<OkObjectResult>(await controller.Dashboard(CancellationToken.None));
         var json = System.Text.Json.JsonSerializer.Serialize(result.Value);
@@ -25,7 +25,8 @@ public class AdminControllerTests
     {
         var controller = new AdminController(
             new StubStorage { HealthException = new InvalidOperationException("storage offline") },
-            new StubWebsiteRepository());
+            new StubWebsiteRepository(),
+            new StubContentImportService());
 
         var result = Assert.IsType<ObjectResult>(await controller.CheckStorage(CancellationToken.None));
 
@@ -36,7 +37,7 @@ public class AdminControllerTests
     [Fact]
     public async Task CheckGitHub_WhenRepositoryIsReachable_ReturnsOk()
     {
-        var controller = new AdminController(new StubStorage(), new StubWebsiteRepository());
+        var controller = new AdminController(new StubStorage(), new StubWebsiteRepository(), new StubContentImportService());
 
         var result = Assert.IsType<OkObjectResult>(await controller.CheckGitHub(CancellationToken.None));
 
@@ -48,12 +49,25 @@ public class AdminControllerTests
     {
         var controller = new AdminController(
             new StubStorage(),
-            new StubWebsiteRepository { Exception = new IOException("git failed") });
+            new StubWebsiteRepository { Exception = new IOException("git failed") },
+            new StubContentImportService());
 
         var result = Assert.IsType<ObjectResult>(await controller.CheckGitHub(CancellationToken.None));
 
         Assert.Equal(StatusCodes.Status503ServiceUnavailable, result.StatusCode);
         Assert.Contains("git failed", System.Text.Json.JsonSerializer.Serialize(result.Value));
+    }
+
+    [Fact]
+    public async Task ImportRepository_ReturnsImportSummary()
+    {
+        var controller = new AdminController(new StubStorage(), new StubWebsiteRepository(), new StubContentImportService());
+
+        var result = Assert.IsType<OkObjectResult>(await controller.ImportRepository(new ImportRepositoryRequest(), CancellationToken.None));
+        var json = System.Text.Json.JsonSerializer.Serialize(result.Value);
+
+        Assert.Contains("\"scanned\":1", json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"imported\":1", json, StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class StubWebsiteRepository : IWebsiteRepository
@@ -65,6 +79,11 @@ public class AdminControllerTests
             return Task.FromResult("commit");
         }
 
+        public Task<IReadOnlyList<WebsiteContentFile>> GetContentFilesAsync(CancellationToken cancellationToken)
+        {
+            return Task.FromResult<IReadOnlyList<WebsiteContentFile>>([]);
+        }
+
         public Task CheckConnectionAsync(CancellationToken cancellationToken)
         {
             if (Exception is not null)
@@ -73,6 +92,19 @@ public class AdminControllerTests
             }
 
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class StubContentImportService : IContentImportService
+    {
+        public Task<ImportRepositoryResult> ImportRepositoryAsync(ImportRepositoryRequest request, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new ImportRepositoryResult(
+                Scanned: 1,
+                Imported: 1,
+                Skipped: 0,
+                Failed: 0,
+                Errors: []));
         }
     }
 

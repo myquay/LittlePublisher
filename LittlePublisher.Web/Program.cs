@@ -103,6 +103,8 @@ builder.Services.AddSingleton<IPublisherStorage, TableStoragePublisherStorage>()
 builder.Services.AddSingleton<IContentGenerator, MarkdownContentGenerator>();
 builder.Services.AddSingleton<IWebsiteRepository, GitCliWebsiteRepository>();
 builder.Services.AddSingleton<IPublishingService, PublishingService>();
+builder.Services.AddSingleton<MarkdownPublishedItemParser>();
+builder.Services.AddSingleton<IContentImportService, ContentImportService>();
 builder.Services.AddHttpClient();
 
 // Controllers

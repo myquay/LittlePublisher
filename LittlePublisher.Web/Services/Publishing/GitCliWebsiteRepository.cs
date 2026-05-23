@@ -18,17 +18,11 @@ public class GitCliWebsiteRepository : IWebsiteRepository
         ValidateConfiguration();
         ValidateRelativePath(relativePath);
 
-        var checkoutPath = Path.Combine(Path.GetTempPath(), "LittlePublisher", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(checkoutPath);
+        var checkoutPath = CreateCheckoutPath();
 
         try
         {
-            var remote = BuildAuthenticatedRemoteUrl();
-
-            await RunGitAsync(
-                workingDirectory: Path.GetTempPath(),
-                arguments: ["clone", "--branch", _config.Branch, "--single-branch", remote, checkoutPath],
-                cancellationToken);
+            await CloneAsync(checkoutPath, cancellationToken);
 
             await RunGitAsync(checkoutPath, ["config", "user.name", "LittlePublisher"], cancellationToken);
             await RunGitAsync(checkoutPath, ["config", "user.email", "littlepublisher@localhost"], cancellationToken);
@@ -45,10 +39,46 @@ public class GitCliWebsiteRepository : IWebsiteRepository
         }
         finally
         {
-            if (Directory.Exists(checkoutPath))
+            DeleteCheckout(checkoutPath);
+        }
+    }
+
+    public async Task<IReadOnlyList<WebsiteContentFile>> GetContentFilesAsync(CancellationToken cancellationToken)
+    {
+        ValidateConfiguration();
+
+        var checkoutPath = CreateCheckoutPath();
+
+        try
+        {
+            await CloneAsync(checkoutPath, cancellationToken);
+
+            var contentPath = _config.ContentPath.Trim('/');
+            ValidateRelativePath(contentPath);
+
+            var fullContentPath = Path.Combine(checkoutPath, contentPath);
+
+            if (!Directory.Exists(fullContentPath))
             {
-                Directory.Delete(checkoutPath, recursive: true);
+                return Array.Empty<WebsiteContentFile>();
             }
+
+            var commitSha = await RunGitAsync(checkoutPath, ["rev-parse", "HEAD"], cancellationToken);
+            var files = Directory
+                .EnumerateFiles(fullContentPath, "*", SearchOption.AllDirectories)
+                .Where(IsMarkdownFile)
+                .Order(StringComparer.OrdinalIgnoreCase)
+                .Select(file => new WebsiteContentFile(
+                    RelativePath: Path.GetRelativePath(checkoutPath, file).Replace(Path.DirectorySeparatorChar, '/'),
+                    Content: File.ReadAllText(file),
+                    CommitSha: commitSha))
+                .ToArray();
+
+            return files;
+        }
+        finally
+        {
+            DeleteCheckout(checkoutPath);
         }
     }
 
@@ -100,6 +130,38 @@ public class GitCliWebsiteRepository : IWebsiteRepository
         };
 
         return builder.Uri.ToString();
+    }
+
+    private string CreateCheckoutPath()
+    {
+        var checkoutPath = Path.Combine(Path.GetTempPath(), "LittlePublisher", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(checkoutPath);
+
+        return checkoutPath;
+    }
+
+    private async Task CloneAsync(string checkoutPath, CancellationToken cancellationToken)
+    {
+        await RunGitAsync(
+            workingDirectory: Path.GetTempPath(),
+            arguments: ["clone", "--branch", _config.Branch, "--single-branch", BuildAuthenticatedRemoteUrl(), checkoutPath],
+            cancellationToken);
+    }
+
+    private static bool IsMarkdownFile(string path)
+    {
+        var extension = Path.GetExtension(path);
+
+        return string.Equals(extension, ".md", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(extension, ".markdown", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void DeleteCheckout(string checkoutPath)
+    {
+        if (Directory.Exists(checkoutPath))
+        {
+            Directory.Delete(checkoutPath, recursive: true);
+        }
     }
 
     private static void ValidateRelativePath(string relativePath)

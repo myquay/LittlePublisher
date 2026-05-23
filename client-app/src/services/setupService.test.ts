@@ -7,7 +7,7 @@ vi.mock('./api', () => ({
   },
 }))
 
-const api = (await import('./api')).default as { get: ReturnType<typeof vi.fn> }
+const api = (await import('./api')).default as unknown as { get: ReturnType<typeof vi.fn> }
 const { setupService } = await import('./setupService')
 
 const status: SetupStatus = {

@@ -1,12 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { useRouter } from 'vue-router'
 import { adminService } from '@/services/adminService'
 import type { AdminCheck, AdminDashboard } from '@/types/admin'
 
 const authStore = useAuthStore()
-const router = useRouter()
 const dashboard = ref<AdminDashboard | null>(null)
 const loadingDashboard = ref(true)
 const dashboardError = ref<string | null>(null)
@@ -15,16 +13,9 @@ const githubCheck = ref<AdminCheck | null>(null)
 const checkingStorage = ref(false)
 const checkingGitHub = ref(false)
 
-const endpointUrl = computed(() => `${window.location.origin}/micropub`)
-
 onMounted(async () => {
   await loadDashboard()
 })
-
-function handleLogout() {
-  authStore.logout()
-  router.push('/login')
-}
 
 async function loadDashboard() {
   loadingDashboard.value = true
@@ -97,22 +88,6 @@ function readError(error: unknown) {
 
 <template>
   <main class="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-    <div class="mb-8 flex flex-col gap-4 border-b border-slate-200 pb-6 sm:flex-row sm:items-end sm:justify-between">
-      <div>
-        <p class="text-sm font-medium uppercase tracking-wide text-slate-500">Micropub endpoint</p>
-        <h1 class="mt-2 text-3xl font-semibold text-slate-950">Welcome back</h1>
-        <p class="mt-2 break-all text-sm text-slate-600">{{ endpointUrl }}</p>
-      </div>
-
-      <button
-        type="button"
-        class="w-fit rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-100"
-        @click="handleLogout"
-      >
-        Sign out
-      </button>
-    </div>
-
     <div v-if="authStore.user" class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
       <section class="space-y-6">
         <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
