@@ -28,7 +28,7 @@ export default defineConfig({
     emptyOutDir: false,
   },
   test: {
-    environment: 'jsdom',
+    environment: 'happy-dom',
     globals: true,
     coverage: {
       reporter: ['text', 'html', 'lcov'],
