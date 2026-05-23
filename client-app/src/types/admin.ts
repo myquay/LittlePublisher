@@ -21,6 +21,7 @@ export interface PublishedItem {
   filePath?: string | null
   commitSha?: string | null
   propertiesJson: string
+  draft: boolean
 }
 
 export interface AdminDashboard {

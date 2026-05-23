@@ -30,7 +30,7 @@ public class MarkdownPublishedItemParser
 
         var frontMatter = ParseFrontMatter(lines[1..closingIndex]);
         var body = BuildBody(lines[(closingIndex + 1)..]);
-        var publishedUtc = ReadPublishedUtc(frontMatter);
+        var published = ReadPublishedUtc(frontMatter);
         var title = ReadString(frontMatter, "title") ?? ReadString(frontMatter, "name");
         var summary = ReadString(frontMatter, "summary") ?? ReadString(frontMatter, "description");
         var categories = ReadStringList(frontMatter, "tags")
@@ -46,9 +46,10 @@ public class MarkdownPublishedItemParser
             Content: body,
             Summary: summary,
             Categories: categories,
-            PublishedUtc: publishedUtc,
+            PublishedUtc: published ?? DateTimeOffset.UnixEpoch,
             FilePath: file.RelativePath,
-            CommitSha: file.CommitSha);
+            CommitSha: file.CommitSha,
+            Draft: published is null);
     }
 
     private static Dictionary<string, FrontMatterValue> ParseFrontMatter(IReadOnlyList<string> lines)
@@ -97,15 +98,20 @@ public class MarkdownPublishedItemParser
         return values;
     }
 
-    private DateTimeOffset ReadPublishedUtc(IReadOnlyDictionary<string, FrontMatterValue> frontMatter)
+    private DateTimeOffset? ReadPublishedUtc(IReadOnlyDictionary<string, FrontMatterValue> frontMatter)
     {
         var published = ReadString(frontMatter, "publishDate") ??
             ReadString(frontMatter, "date") ??
             ReadString(frontMatter, "published");
 
+        if (string.IsNullOrWhiteSpace(published))
+        {
+            return null;
+        }
+
         if (!DateTimeOffset.TryParse(published, out var publishedUtc))
         {
-            throw new InvalidOperationException("Published date is missing or invalid.");
+            throw new InvalidOperationException("Published date is invalid.");
         }
 
         return publishedUtc;

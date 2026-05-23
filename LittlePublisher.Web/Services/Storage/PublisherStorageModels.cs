@@ -21,7 +21,8 @@ public record PublishedItemRecord(
     DateTimeOffset PublishedUtc,
     string? FilePath,
     string? CommitSha,
-    string PropertiesJson);
+    string PropertiesJson,
+    bool Draft = false);
 
 public record NewPublishJob(
     string UserMe,
@@ -37,4 +38,5 @@ public record NewPublishedItem(
     DateTimeOffset PublishedUtc,
     string? FilePath,
     string? CommitSha,
-    string PropertiesJson);
+    string PropertiesJson,
+    bool Draft = false);

@@ -66,7 +66,7 @@ public class GitCliWebsiteRepository : IWebsiteRepository
             var commitSha = await RunGitAsync(checkoutPath, ["rev-parse", "HEAD"], cancellationToken);
             var files = Directory
                 .EnumerateFiles(fullContentPath, "*", SearchOption.AllDirectories)
-                .Where(IsMarkdownFile)
+                .Where(IsImportableMarkdownFile)
                 .Order(StringComparer.OrdinalIgnoreCase)
                 .Select(file => new WebsiteContentFile(
                     RelativePath: Path.GetRelativePath(checkoutPath, file).Replace(Path.DirectorySeparatorChar, '/'),
@@ -148,12 +148,17 @@ public class GitCliWebsiteRepository : IWebsiteRepository
             cancellationToken);
     }
 
-    private static bool IsMarkdownFile(string path)
+    private static bool IsImportableMarkdownFile(string path)
     {
         var extension = Path.GetExtension(path);
 
-        return string.Equals(extension, ".md", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(extension, ".markdown", StringComparison.OrdinalIgnoreCase);
+        if (!string.Equals(extension, ".md", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(extension, ".markdown", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return !string.Equals(Path.GetFileNameWithoutExtension(path), "_index", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void DeleteCheckout(string checkoutPath)

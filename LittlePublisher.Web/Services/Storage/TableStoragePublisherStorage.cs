@@ -91,7 +91,8 @@ public class TableStoragePublisherStorage : IPublisherStorage
             PublishedUtc = item.PublishedUtc,
             FilePath = item.FilePath,
             CommitSha = item.CommitSha,
-            PropertiesJson = item.PropertiesJson
+            PropertiesJson = item.PropertiesJson,
+            Draft = item.Draft
         };
 
         await Items.UpsertEntityAsync(entity, TableUpdateMode.Replace, cancellationToken);
@@ -292,6 +293,8 @@ public class TableStoragePublisherStorage : IPublisherStorage
 
         public string PropertiesJson { get; set; } = default!;
 
+        public bool Draft { get; set; }
+
         public PublishedItemRecord ToRecord()
         {
             var categories = System.Text.Json.JsonSerializer.Deserialize<IReadOnlyList<string>>(CategoriesJson) ?? Array.Empty<string>();
@@ -305,7 +308,8 @@ public class TableStoragePublisherStorage : IPublisherStorage
                 PublishedUtc: PublishedUtc,
                 FilePath: FilePath,
                 CommitSha: CommitSha,
-                PropertiesJson: PropertiesJson);
+                PropertiesJson: PropertiesJson,
+                Draft: Draft);
         }
     }
 }

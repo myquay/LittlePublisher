@@ -184,7 +184,15 @@ function readError(error: unknown) {
                 {{ item.title || item.url }}
               </a>
               <p class="mt-1 break-all text-xs text-slate-500">{{ item.filePath }}</p>
-              <p class="mt-2 text-sm text-slate-600">{{ formatDate(item.publishedUtc) }}</p>
+              <div class="mt-2 flex flex-wrap items-center gap-2">
+                <span
+                  v-if="item.draft"
+                  class="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
+                >
+                  Draft
+                </span>
+                <p v-else class="text-sm text-slate-600">{{ formatDate(item.publishedUtc) }}</p>
+              </div>
             </article>
           </div>
         </div>

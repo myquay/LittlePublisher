@@ -8,4 +8,5 @@ public record ParsedPublishedItem(
     IReadOnlyList<string> Categories,
     DateTimeOffset PublishedUtc,
     string FilePath,
-    string? CommitSha);
+    string? CommitSha,
+    bool Draft);

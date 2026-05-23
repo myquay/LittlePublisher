@@ -31,6 +31,12 @@ public class ContentImportService : IContentImportService
 
         foreach (var file in files)
         {
+            if (IsHugoIndexFile(file.RelativePath))
+            {
+                skipped++;
+                continue;
+            }
+
             ParsedPublishedItem item;
 
             try
@@ -66,7 +72,8 @@ public class ContentImportService : IContentImportService
                         PublishedUtc: item.PublishedUtc,
                         FilePath: item.FilePath,
                         CommitSha: item.CommitSha,
-                        PropertiesJson: BuildPropertiesJson(item)),
+                        PropertiesJson: BuildPropertiesJson(item),
+                        Draft: item.Draft),
                     cancellationToken);
             }
 
@@ -81,14 +88,23 @@ public class ContentImportService : IContentImportService
             Errors: errors);
     }
 
+    private static bool IsHugoIndexFile(string relativePath)
+    {
+        return string.Equals(Path.GetFileNameWithoutExtension(relativePath), "_index", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string BuildPropertiesJson(ParsedPublishedItem item)
     {
         var properties = new Dictionary<string, object>
         {
             ["content"] = new[] { item.Content },
-            ["published"] = new[] { item.PublishedUtc.ToString("O") },
             ["url"] = new[] { item.Url }
         };
+
+        if (!item.Draft)
+        {
+            properties["published"] = new[] { item.PublishedUtc.ToString("O") };
+        }
 
         if (!string.IsNullOrWhiteSpace(item.Title))
         {

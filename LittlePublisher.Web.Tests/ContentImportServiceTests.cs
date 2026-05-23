@@ -41,6 +41,7 @@ public class ContentImportServiceTests
         Assert.Equal(["indieweb", "micropub"], storage.SavedItem.Categories);
         Assert.Equal("blog/content/post/2026/a-fine-little-post.md", storage.SavedItem.FilePath);
         Assert.Equal("abc123", storage.SavedItem.CommitSha);
+        Assert.False(storage.SavedItem.Draft);
         Assert.Contains("\"summary\":[\"Short summary\"]", storage.SavedItem.PropertiesJson);
     }
 
@@ -146,6 +147,79 @@ public class ContentImportServiceTests
         Assert.Equal(1, result.Imported);
         Assert.Equal(1, result.Failed);
         Assert.Equal("blog/content/post/bad.md", result.Errors[0].FilePath);
+    }
+
+    [Fact]
+    public async Task ImportRepositoryAsync_SkipsHugoIndexFiles()
+    {
+        var storage = new CapturingStorage();
+        var service = CreateService(
+            storage,
+            new WebsiteContentFile("blog/content/_index.md", "No published date", "abc123"),
+            new WebsiteContentFile("blog/content/note/_index.md", "No published date", "abc123"),
+            new WebsiteContentFile("blog/content/post/_index.md", "No published date", "abc123"),
+            ArticleFile());
+
+        var result = await service.ImportRepositoryAsync(new ImportRepositoryRequest(), CancellationToken.None);
+
+        Assert.Equal(4, result.Scanned);
+        Assert.Equal(1, result.Imported);
+        Assert.Equal(3, result.Skipped);
+        Assert.Equal(0, result.Failed);
+        Assert.Empty(result.Errors);
+    }
+
+    [Fact]
+    public async Task ImportRepositoryAsync_ImportsMissingPublishedDateAsDraft()
+    {
+        var storage = new CapturingStorage();
+        var service = CreateService(
+            storage,
+            new WebsiteContentFile(
+                RelativePath: "blog/content/about.md",
+                Content: """
+                    ---
+                    title: About
+                    ---
+
+                    About this site.
+                    """,
+                CommitSha: "abc123"));
+
+        var result = await service.ImportRepositoryAsync(new ImportRepositoryRequest(), CancellationToken.None);
+
+        Assert.Equal(1, result.Imported);
+        Assert.Equal(0, result.Failed);
+        Assert.NotNull(storage.SavedItem);
+        Assert.True(storage.SavedItem.Draft);
+        Assert.Equal("https://example.com/about/", storage.SavedItem.Url);
+        Assert.Equal(DateTimeOffset.UnixEpoch, storage.SavedItem.PublishedUtc);
+        Assert.DoesNotContain("\"published\"", storage.SavedItem.PropertiesJson);
+    }
+
+    [Fact]
+    public async Task ImportRepositoryAsync_ReportsInvalidPublishedDate()
+    {
+        var storage = new CapturingStorage();
+        var service = CreateService(
+            storage,
+            new WebsiteContentFile(
+                RelativePath: "blog/content/note/2023-07/httpcompletionoption-responseheadersread.md",
+                Content: """
+                    ---
+                    date: not-a-date
+                    title: HttpCompletionOption ResponseHeadersRead
+                    ---
+
+                    Draft body.
+                    """,
+                CommitSha: "abc123"));
+
+        var result = await service.ImportRepositoryAsync(new ImportRepositoryRequest(), CancellationToken.None);
+
+        Assert.Equal(0, result.Imported);
+        Assert.Equal(1, result.Failed);
+        Assert.Equal("Published date is invalid.", result.Errors[0].Message);
     }
 
     [Fact]
