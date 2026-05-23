@@ -2,7 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { adminService } from '@/services/adminService'
-import type { AdminCheck, AdminDashboard } from '@/types/admin'
+import type { AdminCheck, AdminDashboard, ImportRepositoryResult } from '@/types/admin'
 
 const authStore = useAuthStore()
 const dashboard = ref<AdminDashboard | null>(null)
@@ -12,6 +12,9 @@ const storageCheck = ref<AdminCheck | null>(null)
 const githubCheck = ref<AdminCheck | null>(null)
 const checkingStorage = ref(false)
 const checkingGitHub = ref(false)
+const syncingRepository = ref(false)
+const syncResult = ref<ImportRepositoryResult | null>(null)
+const syncError = ref<string | null>(null)
 
 onMounted(async () => {
   await loadDashboard()
@@ -53,6 +56,27 @@ async function runGitHubCheck() {
     githubCheck.value = { ok: false, message: readError(error) }
   } finally {
     checkingGitHub.value = false
+  }
+}
+
+async function syncRepository(dryRun: boolean) {
+  syncingRepository.value = true
+  syncResult.value = null
+  syncError.value = null
+
+  try {
+    syncResult.value = await adminService.importRepository({
+      dryRun,
+      overwrite: false,
+    })
+
+    if (!dryRun) {
+      await loadDashboard()
+    }
+  } catch (error) {
+    syncError.value = readError(error)
+  } finally {
+    syncingRepository.value = false
   }
 }
 
@@ -201,6 +225,58 @@ function readError(error: unknown) {
               <p v-if="githubCheck" class="mt-2 text-sm" :class="githubCheck.ok ? 'text-emerald-700' : 'text-rose-700'">
                 {{ githubCheck.message }}
               </p>
+            </div>
+          </div>
+        </section>
+
+        <section class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 class="text-lg font-semibold text-slate-950">Repository sync</h2>
+          <div class="mt-5 space-y-3">
+            <button
+              type="button"
+              class="w-full rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-wait disabled:bg-slate-100"
+              :disabled="syncingRepository"
+              @click="syncRepository(true)"
+            >
+              {{ syncingRepository ? 'Syncing...' : 'Preview sync' }}
+            </button>
+            <button
+              type="button"
+              class="w-full rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-wait disabled:bg-slate-500"
+              :disabled="syncingRepository"
+              @click="syncRepository(false)"
+            >
+              {{ syncingRepository ? 'Syncing...' : 'Import from repository' }}
+            </button>
+
+            <p v-if="syncError" class="text-sm text-rose-700">{{ syncError }}</p>
+
+            <div v-if="syncResult" class="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+              <dl class="grid grid-cols-2 gap-x-4 gap-y-2">
+                <div>
+                  <dt class="text-xs text-slate-500">Scanned</dt>
+                  <dd class="font-semibold text-slate-950">{{ syncResult.scanned }}</dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-slate-500">Imported</dt>
+                  <dd class="font-semibold text-slate-950">{{ syncResult.imported }}</dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-slate-500">Skipped</dt>
+                  <dd class="font-semibold text-slate-950">{{ syncResult.skipped }}</dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-slate-500">Failed</dt>
+                  <dd class="font-semibold text-slate-950">{{ syncResult.failed }}</dd>
+                </div>
+              </dl>
+
+              <ul v-if="syncResult.errors.length" class="mt-3 space-y-2 border-t border-slate-200 pt-3">
+                <li v-for="error in syncResult.errors" :key="`${error.filePath}:${error.message}`">
+                  <p class="break-all font-medium text-rose-700">{{ error.filePath }}</p>
+                  <p class="text-rose-700">{{ error.message }}</p>
+                </li>
+              </ul>
             </div>
           </div>
         </section>

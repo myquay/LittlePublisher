@@ -32,3 +32,21 @@ export interface AdminCheck {
   ok: boolean
   message: string
 }
+
+export interface ImportRepositoryRequest {
+  overwrite: boolean
+  dryRun: boolean
+}
+
+export interface ImportRepositoryError {
+  filePath: string
+  message: string
+}
+
+export interface ImportRepositoryResult {
+  scanned: number
+  imported: number
+  skipped: number
+  failed: number
+  errors: ImportRepositoryError[]
+}
