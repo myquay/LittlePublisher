@@ -6,6 +6,8 @@ import type { SetupStatus } from '@/types/setup'
 
 const props = defineProps<{
   initialStatus?: SetupStatus
+  publicMode?: boolean
+  isRefreshing?: boolean
 }>()
 
 const status = ref<SetupStatus | null>(props.initialStatus ?? null)
@@ -31,7 +33,7 @@ onMounted(async () => {
   }
 
   try {
-    status.value = await setupService.getStatus()
+    status.value = props.publicMode ? await setupService.getPublicStatus() : await setupService.getStatus()
   } catch {
     error.value = 'Setup status could not be loaded.'
   } finally {
@@ -55,13 +57,19 @@ onMounted(async () => {
     <section class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
       <div class="mb-5 text-center">
         <p class="text-sm font-medium uppercase tracking-wide text-slate-500">First-run setup</p>
-        <h1 class="mt-2 text-2xl font-semibold text-slate-950">Configuration status</h1>
+        <h1 class="mt-2 text-2xl font-semibold text-slate-950">
+          {{ props.publicMode ? 'Authentication setup' : 'Configuration status' }}
+        </h1>
         <p class="mt-2 text-sm text-slate-600">
-          Configuration required before LittlePublisher can accept Micropub posts.
+          {{
+            props.publicMode
+              ? 'Configuration required before LittlePublisher can authenticate administrators.'
+              : 'Configuration required before LittlePublisher can accept Micropub posts.'
+          }}
         </p>
       </div>
 
-      <div v-if="isLoading" class="flex items-center gap-3 text-slate-600">
+      <div v-if="isLoading || props.isRefreshing" class="flex items-center gap-3 text-slate-600">
         <div class="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-800"></div>
         <p>Checking configuration...</p>
       </div>

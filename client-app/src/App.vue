@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useTokenRefresh } from '@/composables/useTokenRefresh'
@@ -10,22 +10,49 @@ import type { SetupStatus } from '@/types/setup'
 
 const authStore = useAuthStore()
 const router = useRouter()
-const setupStatus = ref<SetupStatus | null>(null)
+const publicSetupStatus = ref<SetupStatus | null>(null)
+const fullSetupStatus = ref<SetupStatus | null>(null)
 const isSetupLoading = ref(true)
+const isFullSetupLoading = ref(false)
 const setupError = ref('')
+const setupStatus = computed(() => {
+  return authStore.isAuthenticated && fullSetupStatus.value ? fullSetupStatus.value : publicSetupStatus.value
+})
 
 // Start token expiry checking
 useTokenRefresh()
 
 onMounted(async () => {
   try {
-    setupStatus.value = await setupService.getStatus()
+    publicSetupStatus.value = await setupService.getPublicStatus()
   } catch {
     setupError.value = 'Setup status could not be loaded.'
   } finally {
     isSetupLoading.value = false
   }
 })
+
+watch(
+  () => [authStore.isInitialized, authStore.isAuthenticated] as const,
+  async ([isInitialized, isAuthenticated]) => {
+    if (!isInitialized || !isAuthenticated) {
+      fullSetupStatus.value = null
+      return
+    }
+
+    isFullSetupLoading.value = true
+    setupError.value = ''
+
+    try {
+      fullSetupStatus.value = await setupService.getStatus()
+    } catch {
+      setupError.value = 'Setup status could not be loaded.'
+    } finally {
+      isFullSetupLoading.value = false
+    }
+  },
+  { immediate: true },
+)
 
 function signOut() {
   authStore.logout()
@@ -85,7 +112,21 @@ function signOut() {
       </section>
     </main>
 
-    <SetupView v-else-if="setupStatus && !setupStatus.ready" :initial-status="setupStatus" />
+    <main
+      v-else-if="isFullSetupLoading"
+      class="mx-auto flex min-h-[calc(100vh-57px)] max-w-6xl items-center px-4 py-8 sm:px-6"
+    >
+      <section class="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-6 text-slate-600 shadow-sm">
+        <div class="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-800"></div>
+        <p>Checking setup...</p>
+      </section>
+    </main>
+
+    <SetupView
+      v-else-if="setupStatus && !setupStatus.ready"
+      :initial-status="setupStatus"
+      :public-mode="!authStore.isAuthenticated"
+    />
 
     <RouterView v-else />
   </div>

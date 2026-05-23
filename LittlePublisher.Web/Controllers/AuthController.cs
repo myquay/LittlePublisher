@@ -35,9 +35,9 @@ public class AuthController : ControllerBase
     {
         var canonicalMe = GetConfiguredMe();
 
-        if (string.IsNullOrEmpty(canonicalMe))
+        if (string.IsNullOrEmpty(canonicalMe) || !ConfigurationSecurity.IsSecureJwtSecretKey(_config.Jwt.SecretKey))
         {
-            return Redirect("/login?error=Website+is+not+configured");
+            return Redirect("/login?error=Authentication+is+not+configured");
         }
 
         // Validate the URL

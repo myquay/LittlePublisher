@@ -34,6 +34,11 @@ public class JwtTokenService : IJwtTokenService
 
     public string GenerateToken(string me, IEnumerable<Claim>? additionalClaims = null)
     {
+        if (!ConfigurationSecurity.IsSecureJwtSecretKey(_config.SecretKey))
+        {
+            throw new InvalidOperationException("App:Jwt:SecretKey must be changed to a secure value before tokens can be issued.");
+        }
+
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config.SecretKey));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
