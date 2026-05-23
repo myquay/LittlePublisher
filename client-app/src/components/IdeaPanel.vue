@@ -45,7 +45,7 @@ defineEmits<{
 </script>
 
 <template>
-  <section class="rounded-[28px] border border-black/10 bg-white p-5 shadow-[0_18px_50px_rgba(20,20,20,0.08)]">
+  <section class="rounded-lg border border-black/10 bg-white p-5 shadow-[0_18px_50px_rgba(20,20,20,0.06)]">
     <div class="flex items-start justify-between gap-4">
       <div>
         <p class="text-xs font-black uppercase tracking-[0.16em] text-[#8b887f]">
@@ -55,17 +55,17 @@ defineEmits<{
         <p class="mt-2 text-sm text-[#706c63]">{{ selectedIdea.type }} / {{ selectedMaturity.label }}</p>
       </div>
       <span
-        class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-lg font-black"
+        class="flex h-12 w-12 shrink-0 items-center justify-center rounded-md text-lg font-black"
         :class="selectedMaturity.tone"
       >
         {{ selectedMaturity.icon }}
       </span>
     </div>
 
-    <div class="mt-5 grid grid-cols-2 gap-2 rounded-2xl bg-[#f7f6f2] p-1">
+    <div class="mt-5 grid grid-cols-2 gap-2 rounded-md bg-[#f7f6f2] p-1">
       <button
         type="button"
-        class="rounded-xl px-3 py-2 text-sm font-bold"
+        class="rounded-md px-3 py-2 text-sm font-bold"
         :class="panelTab === 'research' ? 'bg-white shadow-sm' : 'text-[#706c63]'"
         @click="$emit('set-tab', 'research')"
       >
@@ -73,7 +73,7 @@ defineEmits<{
       </button>
       <button
         type="button"
-        class="rounded-xl px-3 py-2 text-sm font-bold"
+        class="rounded-md px-3 py-2 text-sm font-bold"
         :class="panelTab === 'controls' ? 'bg-white shadow-sm' : 'text-[#706c63]'"
         @click="$emit('set-tab', 'controls')"
       >
@@ -83,13 +83,13 @@ defineEmits<{
 
     <div v-if="panelTab === 'research'" class="mt-5 space-y-4">
       <div
-        class="rounded-3xl border border-dashed border-black/20 bg-[#fbfaf7] p-5 text-sm leading-6 text-[#706c63]"
+        class="rounded-lg border border-dashed border-black/20 bg-[#fbfaf7] p-5 text-sm leading-6 text-[#706c63]"
         @dragover.prevent
         @drop.prevent="$emit('drop-file', $event)"
       >
         <p class="font-bold text-black">Drop research here</p>
         <p class="mt-1">Attach notes, images, links, and text blobs to the idea.</p>
-        <p v-if="dropNotice" class="mt-3 rounded-2xl bg-white px-3 py-2 font-semibold text-[#25724f]">
+        <p v-if="dropNotice" class="mt-3 rounded-md bg-white px-3 py-2 font-semibold text-[#25724f]">
           {{ dropNotice }}
         </p>
       </div>
@@ -97,7 +97,7 @@ defineEmits<{
       <div>
         <h3 class="text-sm font-black uppercase tracking-[0.16em] text-[#8b887f]">Research links</h3>
         <div class="mt-3 space-y-2">
-          <article v-for="link in researchLinks" :key="link.url" class="rounded-2xl bg-[#fbfaf7] p-3">
+          <article v-for="link in researchLinks" :key="link.url" class="rounded-md bg-[#fbfaf7] p-3">
             <p class="font-bold">{{ link.title }}</p>
             <p class="mt-1 truncate text-xs text-[#706c63]">{{ link.url }}</p>
           </article>
@@ -122,7 +122,7 @@ defineEmits<{
       <label class="block">
         <span class="text-xs font-black uppercase tracking-[0.16em] text-[#8b887f]">Maturity</span>
         <select
-          class="mt-2 w-full rounded-2xl border border-black/10 bg-[#fbfaf7] px-4 py-3 text-sm outline-none focus:border-black"
+          class="mt-2 w-full rounded-md border border-black/10 bg-[#fbfaf7] px-4 py-3 text-sm outline-none focus:border-black"
           :value="selectedIdea.maturity"
           @change="$emit('set-maturity', ($event.target as HTMLSelectElement).value as MaturityKey)"
         >
@@ -134,27 +134,27 @@ defineEmits<{
       <label class="block">
         <span class="text-xs font-black uppercase tracking-[0.16em] text-[#8b887f]">Published status</span>
         <input
-          class="mt-2 w-full rounded-2xl border border-black/10 bg-[#fbfaf7] px-4 py-3 text-sm outline-none focus:border-black"
+          class="mt-2 w-full rounded-md border border-black/10 bg-[#fbfaf7] px-4 py-3 text-sm outline-none focus:border-black"
           :value="selectedIdea.status"
         />
       </label>
       <label class="block">
         <span class="text-xs font-black uppercase tracking-[0.16em] text-[#8b887f]">Folder</span>
         <input
-          class="mt-2 w-full rounded-2xl border border-black/10 bg-[#fbfaf7] px-4 py-3 text-sm outline-none focus:border-black"
+          class="mt-2 w-full rounded-md border border-black/10 bg-[#fbfaf7] px-4 py-3 text-sm outline-none focus:border-black"
           :value="selectedIdea.folder"
         />
       </label>
       <label class="block">
         <span class="text-xs font-black uppercase tracking-[0.16em] text-[#8b887f]">Filename</span>
         <input
-          class="mt-2 w-full rounded-2xl border border-black/10 bg-[#fbfaf7] px-4 py-3 text-sm outline-none focus:border-black"
+          class="mt-2 w-full rounded-md border border-black/10 bg-[#fbfaf7] px-4 py-3 text-sm outline-none focus:border-black"
           :value="selectedIdea.filename"
         />
       </label>
       <button
         type="button"
-        class="w-full rounded-2xl bg-black px-5 py-3 text-sm font-bold text-white"
+        class="w-full rounded-md bg-black px-5 py-3 text-sm font-bold text-white"
         @click="$emit('edit')"
       >
         Open edit zone
