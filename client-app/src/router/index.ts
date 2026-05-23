@@ -27,6 +27,12 @@ const router = createRouter({
       component: () => import('@/views/DesignMockupsView.vue'),
       meta: { guest: true },
     },
+    {
+      path: '/design-board',
+      name: 'design-board',
+      component: () => import('@/views/DesignBoardView.vue'),
+      meta: { guest: true },
+    },
   ],
 })
 

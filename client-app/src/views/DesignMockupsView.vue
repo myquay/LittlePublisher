@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import IdeaPanel from '@/components/IdeaPanel.vue'
+import driftwoodStampUrl from '@/assets/maturity/driftwood-stamp.png'
+import pohutukawaStampUrl from '@/assets/maturity/pohutukawa-stamp.png'
+import seedStampUrl from '@/assets/maturity/seed-stamp.png'
+import seedlingStampUrl from '@/assets/maturity/seedling-stamp.png'
+import smallTreeStampUrl from '@/assets/maturity/small-tree-stamp.png'
 
 type SectionKey = 'dashboard' | 'garden' | 'develop' | 'reader' | 'books' | 'pages' | 'settings'
 type PanelTab = 'research' | 'controls'
@@ -11,6 +16,7 @@ interface MaturityLevel {
   label: string
   icon: string
   tone: string
+  stampUrl: string
 }
 
 interface Idea {
@@ -58,11 +64,11 @@ const sections: Array<{ key: SectionKey; label: string; hint: string; count: str
 ]
 
 const maturityLevels: MaturityLevel[] = [
-  { key: 'seed', label: 'Seed', icon: 'S', tone: 'bg-[#fff7d6] text-[#745a00]' },
-  { key: 'seedling', label: 'Seedling', icon: 'G', tone: 'bg-[#e6f5e9] text-[#21613a]' },
-  { key: 'small-tree', label: 'Small tree', icon: 'T', tone: 'bg-[#e4f0ff] text-[#23517a]' },
-  { key: 'pohutakawa', label: 'Pohutakawa in full bloom', icon: 'P', tone: 'bg-[#ffe7e8] text-[#a5343b]' },
-  { key: 'driftwood', label: 'Driftwood', icon: 'D', tone: 'bg-[#eee9df] text-[#6e6555]' },
+  { key: 'seed', label: 'Seed', icon: 'S', tone: 'bg-[#fff7d6] text-[#745a00]', stampUrl: seedStampUrl },
+  { key: 'seedling', label: 'Seedling', icon: 'G', tone: 'bg-[#e6f5e9] text-[#21613a]', stampUrl: seedlingStampUrl },
+  { key: 'small-tree', label: 'Small tree', icon: 'T', tone: 'bg-[#e4f0ff] text-[#23517a]', stampUrl: smallTreeStampUrl },
+  { key: 'pohutakawa', label: 'Pohutakawa in full bloom', icon: 'P', tone: 'bg-[#ffe7e8] text-[#a5343b]', stampUrl: pohutukawaStampUrl },
+  { key: 'driftwood', label: 'Driftwood', icon: 'D', tone: 'bg-[#eee9df] text-[#6e6555]', stampUrl: driftwoodStampUrl },
 ]
 
 const ideas = ref<Idea[]>([
@@ -466,9 +472,11 @@ function handleDrop(event: DragEvent) {
                   :class="selectedIdea.id === idea.id ? 'bg-[#fffafa]' : ''"
                   @click="selectIdea(idea.id)"
                 >
-                  <span class="flex h-14 w-14 items-center justify-center rounded-md text-lg font-black" :class="maturityLevels.find((level) => level.key === idea.maturity)?.tone">
-                    {{ maturityLevels.find((level) => level.key === idea.maturity)?.icon }}
-                  </span>
+                  <img
+                    class="h-16 w-16 object-contain"
+                    :alt="maturityLevels.find((level) => level.key === idea.maturity)?.label"
+                    :src="maturityLevels.find((level) => level.key === idea.maturity)?.stampUrl"
+                  />
                   <span class="min-w-0">
                     <span class="block text-2xl font-black">{{ idea.title }}</span>
                     <span class="mt-2 block text-sm leading-6 text-[#706c63]">{{ idea.summary }}</span>

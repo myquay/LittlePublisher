@@ -7,6 +7,7 @@ interface MaturityLevel {
   label: string
   icon: string
   tone: string
+  stampUrl: string
 }
 
 interface Idea {
@@ -53,12 +54,11 @@ defineEmits<{
         <h2 class="mt-2 text-2xl font-black">{{ selectedIdea.title }}</h2>
         <p class="mt-2 text-sm text-[#706c63]">{{ selectedIdea.type }} / {{ selectedMaturity.label }}</p>
       </div>
-      <span
-        class="flex h-12 w-12 shrink-0 items-center justify-center rounded-md text-lg font-black"
-        :class="selectedMaturity.tone"
-      >
-        {{ selectedMaturity.icon }}
-      </span>
+      <img
+        class="h-16 w-16 shrink-0 object-contain"
+        :alt="selectedMaturity.label"
+        :src="selectedMaturity.stampUrl"
+      />
     </div>
 
     <div class="mt-5 grid grid-cols-2 gap-2 rounded-md bg-[#f7f6f2] p-1">
