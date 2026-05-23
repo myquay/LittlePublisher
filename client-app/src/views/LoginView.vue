@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import logoUrl from '@/assets/brand/littlepublisher-logo.png'
 
 const route = useRoute()
 const error = ref('')
@@ -24,12 +25,23 @@ function handleLogin() {
 </script>
 
 <template>
-  <main class="mx-auto flex min-h-[calc(100vh-57px)] max-w-6xl items-center px-4 py-8 sm:px-6">
-    <section class="w-full max-w-lg rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-      <div class="mb-6">
-        <h1 class="text-2xl font-semibold text-slate-950">Welcome back</h1>
+  <main class="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+    <div class="mb-8 flex justify-center sm:mb-10">
+      <img
+        :src="logoUrl"
+        alt="LittlePublisher"
+        class="h-auto w-full max-w-[17.5rem] object-contain sm:max-w-xs"
+        width="1254"
+        height="1254"
+      />
+    </div>
+
+    <section class="mx-auto w-full max-w-xl rounded-lg border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+      <div class="mb-6 text-center">
+        <p class="text-sm font-medium uppercase text-slate-500">Sign in</p>
+        <h1 class="mt-2 text-2xl font-semibold text-slate-950">Welcome back</h1>
         <p class="mt-2 text-sm text-slate-600">
-          Sign in with the website configured for this LittlePublisher instance.
+          Use the website configured for this LittlePublisher instance.
         </p>
       </div>
 
@@ -40,7 +52,7 @@ function handleLogin() {
 
         <button
           type="button"
-          class="inline-flex w-full items-center justify-center rounded-md bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+          class="inline-flex w-full cursor-pointer items-center justify-center rounded-md bg-slate-950 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
           :disabled="isLoading"
           @click="handleLogin"
         >
