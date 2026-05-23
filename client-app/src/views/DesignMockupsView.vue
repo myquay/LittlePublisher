@@ -480,7 +480,8 @@ function handleDrop(event: DragEvent) {
             </div>
           </section>
 
-          <aside v-if="panelOpen" class="border-t border-black/10 bg-[#fbfaf7] p-5 lg:border-l lg:border-t-0 lg:p-6">
+          <aside v-if="panelOpen" class="border-t border-black/10 bg-[#fbfaf7] p-5 sm:p-8 lg:border-l lg:border-t-0">
+            <div class="mb-5 hidden h-10 lg:block"></div>
             <div class="sticky top-6">
               <IdeaPanel
                 :attachments="attachments"
@@ -491,39 +492,48 @@ function handleDrop(event: DragEvent) {
                 :selected-idea="selectedIdea"
                 :selected-maturity="selectedMaturity"
                 @drop-file="handleDrop"
-                @edit="openEditor()"
                 @set-maturity="updateMaturity"
                 @set-tab="panelTab = $event"
               />
+              <button
+                type="button"
+                class="mt-4 w-full rounded-md bg-black px-5 py-3 text-sm font-bold text-white"
+                @click="openEditor()"
+              >
+                Cultivate
+              </button>
             </div>
           </aside>
         </div>
 
         <div v-else-if="activeSection === 'develop'" class="grid min-h-[calc(100vh-7rem)] lg:grid-cols-[minmax(0,1fr)_24rem]">
-          <section class="bg-white p-5 sm:p-8">
-            <div class="flex flex-col gap-4 border-b border-black/10 pb-6 sm:flex-row sm:items-center sm:justify-between">
+          <section class="p-5 sm:p-8">
+            <div class="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div class="flex flex-wrap gap-2">
-                <button type="button" class="w-fit rounded-full border border-black/15 px-4 py-2 text-sm font-bold text-black hover:border-black" @click="activeSection = 'garden'">Back to garden</button>
-                <button type="button" class="w-fit rounded-full border border-black/15 px-4 py-2 text-sm font-bold text-[#4b4944] hover:border-black" @click="backToDashboard">Back to dashboard</button>
+                <button type="button" class="w-fit rounded-full border border-black/15 bg-white px-4 py-2 text-sm font-bold text-black hover:border-black" @click="activeSection = 'garden'">Back to garden</button>
+                <button type="button" class="w-fit rounded-full border border-black/15 bg-white px-4 py-2 text-sm font-bold text-[#4b4944] hover:border-black" @click="backToDashboard">Back to dashboard</button>
               </div>
               <div class="flex gap-2">
-                <button type="button" class="rounded-full border border-black/15 px-4 py-2 text-sm font-semibold">Preview</button>
+                <button type="button" class="rounded-full border border-black/15 bg-white px-4 py-2 text-sm font-semibold">Preview</button>
                 <button type="button" class="rounded-full bg-[#ff5a5f] px-4 py-2 text-sm font-bold text-white shadow-[0_12px_28px_rgba(255,90,95,0.22)]">Publish</button>
               </div>
             </div>
 
-            <article class="mx-auto max-w-3xl py-12">
-              <input class="w-full border-0 bg-transparent text-5xl font-black leading-none outline-none placeholder:text-[#d2cec5] sm:text-7xl" :value="selectedIdea.title" aria-label="Title" />
-              <div class="mt-8 flex flex-wrap gap-2 text-xs font-medium text-[#77736b]">
-                <span class="rounded-full border border-black/10 px-3 py-1">{{ selectedIdea.status }}</span>
-                <span class="rounded-full border border-black/10 px-3 py-1">{{ selectedMaturity.label }}</span>
-                <span class="rounded-full border border-black/10 px-3 py-1">{{ selectedIdea.folder }}/{{ selectedIdea.filename }}</span>
-              </div>
-              <textarea class="mt-12 min-h-[30rem] w-full resize-none border-0 bg-transparent text-xl leading-9 text-[#252525] outline-none" :value="`Publishing should feel like lowering a note into the world, not launching software.\n\nThis is the focused writing canvas. Research stays close, but the page does not carry the full dashboard navigation.\n\nA bookmark can become a note, a review can become a post, and a project update can become an activity entry.`" />
-            </article>
+            <div class="rounded-lg border border-black/10 bg-white shadow-[0_18px_50px_rgba(20,20,20,0.06)]">
+              <article class="mx-auto max-w-3xl px-6 py-12 sm:px-8">
+                <input class="w-full border-0 bg-transparent text-5xl font-black leading-none outline-none placeholder:text-[#d2cec5] sm:text-7xl" :value="selectedIdea.title" aria-label="Title" />
+                <div class="mt-8 flex flex-wrap gap-2 text-xs font-medium text-[#77736b]">
+                  <span class="rounded-full border border-black/10 px-3 py-1">{{ selectedIdea.status }}</span>
+                  <span class="rounded-full border border-black/10 px-3 py-1">{{ selectedMaturity.label }}</span>
+                  <span class="rounded-full border border-black/10 px-3 py-1">{{ selectedIdea.folder }}/{{ selectedIdea.filename }}</span>
+                </div>
+                <textarea class="mt-12 min-h-[30rem] w-full resize-none border-0 bg-transparent text-xl leading-9 text-[#252525] outline-none" :value="`Publishing should feel like lowering a note into the world, not launching software.\n\nThis is the focused writing canvas. Research stays close, but the page does not carry the full dashboard navigation.\n\nA bookmark can become a note, a review can become a post, and a project update can become an activity entry.`" />
+              </article>
+            </div>
           </section>
 
-          <aside class="border-t border-black/10 bg-[#fbfaf7] p-5 lg:border-l lg:border-t-0 lg:p-6">
+          <aside class="border-t border-black/10 bg-[#fbfaf7] p-5 sm:p-8 lg:border-l lg:border-t-0">
+            <div class="mb-5 hidden h-10 lg:block"></div>
             <div class="sticky top-6">
               <IdeaPanel
                 :attachments="attachments"
@@ -535,10 +545,16 @@ function handleDrop(event: DragEvent) {
                 :selected-maturity="selectedMaturity"
                 permanent
                 @drop-file="handleDrop"
-                @edit="openEditor()"
                 @set-maturity="updateMaturity"
                 @set-tab="panelTab = $event"
               />
+              <button
+                type="button"
+                class="mt-4 w-full rounded-md bg-black px-5 py-3 text-sm font-bold text-white"
+                @click="openEditor()"
+              >
+                Cultivate
+              </button>
             </div>
           </aside>
         </div>

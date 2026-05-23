@@ -38,7 +38,6 @@ defineProps<{
 
 defineEmits<{
   'drop-file': [event: DragEvent]
-  edit: []
   'set-maturity': [value: MaturityKey]
   'set-tab': [tab: PanelTab]
 }>()
@@ -152,13 +151,6 @@ defineEmits<{
           :value="selectedIdea.filename"
         />
       </label>
-      <button
-        type="button"
-        class="w-full rounded-md bg-black px-5 py-3 text-sm font-bold text-white"
-        @click="$emit('edit')"
-      >
-        Open edit zone
-      </button>
     </div>
   </section>
 </template>
