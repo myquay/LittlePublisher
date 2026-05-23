@@ -21,6 +21,12 @@ const router = createRouter({
       name: 'callback',
       component: () => import('@/views/CallbackView.vue'),
     },
+    {
+      path: '/mockups',
+      name: 'mockups',
+      component: () => import('@/views/DesignMockupsView.vue'),
+      meta: { guest: true },
+    },
   ],
 })
 
