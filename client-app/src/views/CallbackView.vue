@@ -48,7 +48,7 @@ function goToLogin() {
 </script>
 
 <template>
-  <main class="mx-auto flex min-h-[calc(100vh-57px)] max-w-6xl items-center px-4 py-8 sm:px-6">
+  <main class="mx-auto flex min-h-screen max-w-6xl items-center px-4 py-8 sm:px-6">
     <section class="w-full max-w-lg rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
       <div v-if="error" class="space-y-4">
         <div>

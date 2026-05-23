@@ -1,6 +1,6 @@
 import { fileURLToPath, URL } from 'node:url'
 
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 import tailwindcss from '@tailwindcss/vite'
@@ -26,5 +26,14 @@ export default defineConfig({
   build: {
     outDir: '../LittlePublisher.Web/wwwroot',
     emptyOutDir: false,
+  },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    coverage: {
+      reporter: ['text', 'html', 'lcov'],
+      include: ['src/**/*.{ts,vue}'],
+      exclude: ['src/main.ts', 'src/router/**', 'src/assets/**', 'src/types/**'],
+    },
   },
 })
