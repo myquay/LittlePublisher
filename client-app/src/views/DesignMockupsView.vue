@@ -7,7 +7,7 @@ import seedStampUrl from '@/assets/maturity/seed-stamp.png'
 import seedlingStampUrl from '@/assets/maturity/seedling-stamp.png'
 import smallTreeStampUrl from '@/assets/maturity/small-tree-stamp.png'
 
-type SectionKey = 'dashboard' | 'garden' | 'develop' | 'reader' | 'books' | 'pages' | 'settings'
+type SectionKey = 'dashboard' | 'garden' | 'develop' | 'reader' | 'mentions' | 'books' | 'pages' | 'settings'
 type PanelTab = 'research' | 'controls'
 type MaturityKey = 'seed' | 'seedling' | 'small-tree' | 'pohutakawa' | 'driftwood'
 
@@ -53,11 +53,36 @@ interface ReaderNote {
   note: string
 }
 
+interface WebmentionActivity {
+  id: number
+  source: string
+  target: string
+  author: string
+  type: string
+  excerpt: string
+  received: string
+  status: 'Pending' | 'Approved' | 'Rejected'
+  verified: boolean
+}
+
+interface OutgoingWebmention {
+  id: number
+  title: string
+  target: string
+  endpoint: string
+  type: string
+  source: string
+  sourceMode: string
+  send: boolean
+  status: string
+}
+
 const sections: Array<{ key: SectionKey; label: string; hint: string; count: string }> = [
   { key: 'dashboard', label: 'Dashboard', hint: 'Jumping off point', count: '' },
   { key: 'garden', label: 'Garden', hint: 'Ideas in progress', count: '12' },
   { key: 'develop', label: 'Develop', hint: 'Focused writing', count: '1' },
   { key: 'reader', label: 'Reader', hint: 'Blogs and bookmarks', count: '38' },
+  { key: 'mentions', label: 'Mentions', hint: 'Webmention inbox', count: '3' },
   { key: 'books', label: 'Books', hint: 'Reading notes', count: '7' },
   { key: 'pages', label: 'Pages', hint: 'One-off pages', count: '5' },
   { key: 'settings', label: 'Settings', hint: 'Config and health', count: '' },
@@ -211,8 +236,103 @@ const healthChecks = [
   { name: 'Storage', detail: 'Table storage reachable', ok: true },
   { name: 'GitHub', detail: 'Push token valid', ok: true },
   { name: 'Website', detail: 'Last publish finished in 18s', ok: true },
+  { name: 'Webmentions', detail: 'Endpoint receiving, 3 awaiting review', ok: true },
   { name: 'RSS', detail: 'Reader import paused until feeds are configured', ok: false },
 ]
+const webmentionActivities = ref<WebmentionActivity[]>([
+  {
+    id: 1,
+    source: 'https://maggie.example/notes/gardens',
+    target: '/posts/reader-compost-heap',
+    author: 'Maggie Appleton',
+    type: 'Reply',
+    excerpt: 'This framing of the reader as a compost heap captures the slow value of notes becoming public.',
+    received: '18 minutes ago',
+    status: 'Pending',
+    verified: true,
+  },
+  {
+    id: 2,
+    source: 'https://robin.example/bookmarks/small-software',
+    target: '/notes/durable-links',
+    author: 'Robin Sloan',
+    type: 'Bookmark',
+    excerpt: 'Saved for the section on durable links and small personal rituals.',
+    received: '2 hours ago',
+    status: 'Pending',
+    verified: true,
+  },
+  {
+    id: 3,
+    source: 'https://social.example/@ana/114',
+    target: '/posts/small-weblog',
+    author: 'Ana Rodrigues',
+    type: 'Like',
+    excerpt: 'Liked this post.',
+    received: 'Yesterday',
+    status: 'Approved',
+    verified: true,
+  },
+  {
+    id: 4,
+    source: 'https://events.example/rsvp/quiet-web',
+    target: '/posts/small-weblog',
+    author: 'Quiet Web Club',
+    type: 'RSVP',
+    excerpt: 'RSVP yes to the small-web publishing session.',
+    received: 'Yesterday',
+    status: 'Pending',
+    verified: false,
+  },
+])
+const outgoingWebmentions = ref<OutgoingWebmention[]>([
+  {
+    id: 1,
+    title: 'Garden histories and digital homes',
+    target: 'https://maggieappleton.com/garden-history',
+    endpoint: 'https://webmention.io/maggieappleton.com/webmention',
+    type: 'Reply',
+    source: '/posts/reader-compost-heap',
+    sourceMode: 'Post content',
+    send: true,
+    status: 'Endpoint found',
+  },
+  {
+    id: 2,
+    title: 'A note on small software',
+    target: 'https://www.robinsloan.com/notes/small-software',
+    endpoint: 'https://webmention.io/robinsloan.com/webmention',
+    type: 'Mention',
+    source: '/posts/reader-compost-heap',
+    sourceMode: 'Post content',
+    send: true,
+    status: 'Endpoint found',
+  },
+  {
+    id: 3,
+    title: 'A quiet note I liked',
+    target: 'https://example.org/quiet-note',
+    endpoint: 'https://webmention.io/example.org/webmention',
+    type: 'Like',
+    source: '/likes/quiet-note',
+    sourceMode: 'Generated like',
+    send: true,
+    status: 'Endpoint found',
+  },
+  {
+    id: 4,
+    title: 'Personal publishing tools',
+    target: 'https://example.net/publishing-tools',
+    endpoint: '',
+    type: 'Bookmark',
+    source: '/bookmarks/publishing-tools',
+    sourceMode: 'Generated bookmark',
+    send: false,
+    status: 'No endpoint discovered',
+  },
+])
+const mentionTypes = ['Mention', 'Reply', 'Like', 'Bookmark', 'Repost', 'RSVP']
+const quickMentionTypes = ['Like', 'Bookmark', 'Repost', 'RSVP']
 
 const activeSection = ref<SectionKey>('dashboard')
 const selectedIdeaId = ref(ideas.value[0]!.id)
@@ -241,6 +361,7 @@ const selectedIdea = computed<Idea>(() => ideas.value.find((idea) => idea.id ===
 const selectedMaturity = computed<MaturityLevel>(() => maturityLevels.find((level) => level.key === selectedIdea.value.maturity) ?? maturityLevels[0]!)
 const starredPosts = computed(() => readerPosts.value.filter((post) => post.starred))
 const selectedReaderPost = computed(() => readerPosts.value.find((post) => post.id === selectedReaderPostId.value) ?? readerPosts.value[0]!)
+const pendingMentions = computed(() => webmentionActivities.value.filter((mention) => mention.status === 'Pending'))
 const readerCategories = computed(() => {
   const categories = readerPosts.value.reduce<Record<string, number>>((groups, post) => {
     groups[post.category] = (groups[post.category] ?? 0) + 1
@@ -327,6 +448,16 @@ function toggleRead(id: number) {
 function toggleReadLater(id: number) {
   const post = readerPosts.value.find((item) => item.id === id)
   if (post) post.readLater = !post.readLater
+}
+
+function setMentionStatus(id: number, status: WebmentionActivity['status']) {
+  const mention = webmentionActivities.value.find((item) => item.id === id)
+  if (mention) mention.status = status
+}
+
+function toggleOutgoingWebmention(id: number) {
+  const mention = outgoingWebmentions.value.find((item) => item.id === id)
+  if (mention && mention.endpoint) mention.send = !mention.send
 }
 
 function openReaderPost(post: ReaderPost) {
@@ -537,6 +668,70 @@ function handleDrop(event: DragEvent) {
                 </div>
                 <textarea class="mt-12 min-h-[30rem] w-full resize-none border-0 bg-transparent text-xl leading-9 text-[#252525] outline-none" :value="`Publishing should feel like lowering a note into the world, not launching software.\n\nThis is the focused writing canvas. Research stays close, but the page does not carry the full dashboard navigation.\n\nA bookmark can become a note, a review can become a post, and a project update can become an activity entry.`" />
               </article>
+
+              <section class="border-t border-black/10 p-6 sm:p-8">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p class="text-xs font-black uppercase tracking-[0.16em] text-[#8b887f]">Outgoing Webmentions</p>
+                    <h3 class="mt-2 text-2xl font-black">Notify linked sites on publish</h3>
+                    <p class="mt-2 max-w-2xl text-sm leading-6 text-[#706c63]">
+                      Supported links are discovered before publishing. LittlePublisher sends source and target URLs; the selected type describes how this post should be interpreted locally.
+                    </p>
+                  </div>
+                  <span class="rounded-full border border-black/10 px-3 py-2 text-xs font-bold text-[#706c63]">
+                    {{ outgoingWebmentions.filter((mention) => mention.send).length }} queued
+                  </span>
+                </div>
+
+                <div class="mt-6 divide-y divide-black/10 rounded-lg border border-black/10">
+                  <article
+                    v-for="mention in outgoingWebmentions"
+                    :key="mention.id"
+                    class="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_9rem_8rem]"
+                  >
+                    <div class="min-w-0">
+                      <p class="truncate text-base font-black">{{ mention.title }}</p>
+                      <p class="mt-1 truncate text-sm text-[#706c63]">{{ mention.target }}</p>
+                      <p class="mt-1 truncate text-xs font-semibold text-[#8b887f]">{{ mention.sourceMode }} from {{ mention.source }}</p>
+                      <p class="mt-2 text-xs font-bold" :class="mention.endpoint ? 'text-[#23834b]' : 'text-[#8b887f]'">{{ mention.status }}</p>
+                    </div>
+                    <label class="block">
+                      <span class="text-xs font-black uppercase tracking-[0.14em] text-[#8b887f]">Type</span>
+                      <select v-model="mention.type" class="mt-2 w-full rounded-md border border-black/10 bg-[#fbfaf7] px-3 py-2 text-sm">
+                        <option v-for="type in mentionTypes" :key="type">{{ type }}</option>
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      class="self-end rounded-md border border-black/15 px-4 py-3 text-sm font-bold"
+                      :class="mention.send ? 'bg-black text-white' : 'bg-white text-[#706c63]'"
+                      :disabled="!mention.endpoint"
+                      @click="toggleOutgoingWebmention(mention.id)"
+                    >
+                      {{ mention.send ? 'Send' : 'Skip' }}
+                    </button>
+                  </article>
+                </div>
+
+                <div class="mt-6 rounded-lg border border-black/10 bg-[#fbfaf7] p-5">
+                  <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                      <h4 class="text-xl font-black">Quick mention without writing a post</h4>
+                      <p class="mt-2 max-w-2xl text-sm leading-6 text-[#706c63]">
+                        For likes, bookmarks, reposts, and RSVPs, LittlePublisher can create a small source entry, then send the Webmention from that URL.
+                      </p>
+                    </div>
+                    <span class="w-fit rounded-full border border-black/10 bg-white px-3 py-2 text-xs font-bold text-[#706c63]">No article body required</span>
+                  </div>
+                  <div class="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_9rem_9rem]">
+                    <input class="min-h-12 rounded-md border border-black/10 bg-white px-4 text-sm outline-none focus:border-black" value="https://example.org/quiet-note" aria-label="Target URL" />
+                    <select class="rounded-md border border-black/10 bg-white px-3 py-2 text-sm">
+                      <option v-for="type in quickMentionTypes" :key="type">{{ type }}</option>
+                    </select>
+                    <button type="button" class="rounded-md bg-black px-4 py-3 text-sm font-bold text-white">Create and send</button>
+                  </div>
+                </div>
+              </section>
             </div>
           </section>
 
@@ -753,6 +948,103 @@ function handleDrop(event: DragEvent) {
           </section>
         </div>
 
+        <div v-else-if="activeSection === 'mentions'" class="p-5 sm:p-8">
+          <button type="button" class="mb-5 rounded-full border border-black/15 bg-white px-4 py-2 text-sm font-bold text-[#4b4944] hover:border-black" @click="backToDashboard">Back to dashboard</button>
+          <section class="overflow-hidden rounded-lg border border-black/10 bg-white shadow-[0_18px_50px_rgba(20,20,20,0.06)]">
+            <div class="border-b border-black/10 p-6 sm:p-8">
+              <div class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <p class="text-sm font-semibold uppercase tracking-[0.18em] text-[#8b887f]">Webmentions</p>
+                  <h2 class="mt-2 text-4xl font-black">Mentions from around the web</h2>
+                  <p class="mt-3 max-w-3xl text-sm leading-6 text-[#706c63]">
+                    Incoming source and target URLs are verified first, then held for review. Approved mentions can be published as replies, likes, bookmarks, RSVPs, or plain mentions.
+                  </p>
+                </div>
+                <div class="grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-black/10 bg-black/10 text-center">
+                  <div class="bg-[#fbfaf7] px-4 py-3">
+                    <p class="text-2xl font-black">{{ pendingMentions.length }}</p>
+                    <p class="text-xs font-bold text-[#706c63]">Pending</p>
+                  </div>
+                  <div class="bg-[#fbfaf7] px-4 py-3">
+                    <p class="text-2xl font-black">{{ webmentionActivities.filter((mention) => mention.status === 'Approved').length }}</p>
+                    <p class="text-xs font-bold text-[#706c63]">Approved</p>
+                  </div>
+                  <div class="bg-[#fbfaf7] px-4 py-3">
+                    <p class="text-2xl font-black">{{ webmentionActivities.filter((mention) => !mention.verified).length }}</p>
+                    <p class="text-xs font-bold text-[#706c63]">Needs check</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="grid min-h-[38rem] lg:grid-cols-[minmax(0,1fr)_22rem]">
+              <div class="divide-y divide-black/10">
+                <article
+                  v-for="mention in webmentionActivities"
+                  :key="mention.id"
+                  class="grid gap-5 p-5 sm:p-6 xl:grid-cols-[7rem_minmax(0,1fr)_12rem]"
+                >
+                  <div>
+                    <span class="inline-flex rounded-md border border-black/10 bg-[#fbfaf7] px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-[#4b4944]">{{ mention.type }}</span>
+                    <p class="mt-3 text-xs font-semibold text-[#8b887f]">{{ mention.received }}</p>
+                  </div>
+                  <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <h3 class="text-2xl font-black">{{ mention.author }}</h3>
+                      <span class="rounded-full px-3 py-1 text-xs font-bold" :class="mention.verified ? 'bg-[#e7f7e9] text-[#23834b]' : 'bg-[#fff5d8] text-[#856100]'">
+                        {{ mention.verified ? 'Verified link' : 'Verify source' }}
+                      </span>
+                    </div>
+                    <p class="mt-3 max-w-3xl text-lg leading-7 text-[#252525]">"{{ mention.excerpt }}"</p>
+                    <div class="mt-4 grid gap-2 text-sm text-[#706c63]">
+                      <p class="truncate"><span class="font-bold text-black">Source:</span> {{ mention.source }}</p>
+                      <p class="truncate"><span class="font-bold text-black">Target:</span> {{ mention.target }}</p>
+                    </div>
+                  </div>
+                  <div class="flex flex-col gap-2 xl:items-end">
+                    <span class="w-fit rounded-full border border-black/10 px-3 py-2 text-xs font-bold" :class="mention.status === 'Approved' ? 'bg-[#e7f7e9] text-[#23834b]' : mention.status === 'Rejected' ? 'bg-[#fff0f0] text-[#a5343b]' : 'text-[#706c63]'">
+                      {{ mention.status }}
+                    </span>
+                    <button type="button" class="w-full rounded-md bg-black px-4 py-3 text-sm font-bold text-white disabled:opacity-30" :disabled="mention.status === 'Approved'" @click="setMentionStatus(mention.id, 'Approved')">Approve</button>
+                    <button type="button" class="w-full rounded-md border border-black/15 px-4 py-3 text-sm font-bold text-[#706c63] disabled:opacity-30" :disabled="mention.status === 'Rejected'" @click="setMentionStatus(mention.id, 'Rejected')">Reject</button>
+                  </div>
+                </article>
+              </div>
+
+              <aside class="border-t border-black/10 bg-[#fbfaf7] p-5 sm:p-6 lg:border-l lg:border-t-0">
+                <h3 class="text-2xl font-black">Moderation rules</h3>
+                <div class="mt-5 space-y-4 text-sm leading-6 text-[#706c63]">
+                  <p><span class="font-bold text-black">Receive:</span> accept source and target URLs, then queue verification.</p>
+                  <p><span class="font-bold text-black">Verify:</span> fetch the source and confirm it links exactly to the target before publication.</p>
+                  <p><span class="font-bold text-black">Review:</span> nothing appears publicly until approved.</p>
+                </div>
+                <div class="mt-6 rounded-lg border border-black/10 bg-white p-4">
+                  <p class="text-xs font-black uppercase tracking-[0.14em] text-[#8b887f]">Public display</p>
+                  <div class="mt-4 space-y-2">
+                    <label v-for="type in mentionTypes" :key="type" class="flex items-center justify-between gap-3 rounded-md bg-[#fbfaf7] px-3 py-2 text-sm font-bold">
+                      <span>{{ type }}</span>
+                      <input type="checkbox" checked class="h-4 w-4 accent-black" />
+                    </label>
+                  </div>
+                </div>
+                <div class="mt-6 rounded-lg border border-black/10 bg-white p-4">
+                  <p class="text-xs font-black uppercase tracking-[0.14em] text-[#8b887f]">Send without content</p>
+                  <p class="mt-3 text-sm leading-6 text-[#706c63]">
+                    A like still needs a source URL. LittlePublisher can create a tiny private-to-public source entry such as <span class="font-bold text-black">/likes/quiet-note</span>, then send source and target to the discovered endpoint.
+                  </p>
+                  <div class="mt-4 grid gap-2">
+                    <input class="min-h-11 rounded-md border border-black/10 bg-[#fbfaf7] px-3 text-sm" value="https://example.org/quiet-note" aria-label="Quick Webmention target" />
+                    <select class="rounded-md border border-black/10 bg-[#fbfaf7] px-3 py-2 text-sm">
+                      <option v-for="type in quickMentionTypes" :key="type">{{ type }}</option>
+                    </select>
+                    <button type="button" class="rounded-md bg-black px-4 py-3 text-sm font-bold text-white">Create source and send</button>
+                  </div>
+                </div>
+              </aside>
+            </div>
+          </section>
+        </div>
+
         <div v-else-if="activeSection === 'books'" class="p-5 sm:p-8">
           <button type="button" class="mb-5 rounded-full border border-black/15 bg-white px-4 py-2 text-sm font-bold text-[#4b4944] hover:border-black" @click="backToDashboard">Back to dashboard</button>
           <section class="rounded-lg border border-black/10 bg-white p-6 shadow-[0_18px_50px_rgba(20,20,20,0.06)] sm:p-8">
@@ -795,7 +1087,7 @@ function handleDrop(event: DragEvent) {
           <button type="button" class="mb-5 rounded-full border border-black/15 bg-white px-4 py-2 text-sm font-bold text-[#4b4944] hover:border-black" @click="backToDashboard">Back to dashboard</button>
           <section class="rounded-lg border border-black/10 bg-white p-6 shadow-[0_18px_50px_rgba(20,20,20,0.06)] sm:p-8">
             <h2 class="text-4xl font-black">Settings</h2>
-            <div class="mt-8 grid gap-px overflow-hidden rounded-lg border border-black/10 bg-black/10 md:grid-cols-3">
+            <div class="mt-8 grid gap-px overflow-hidden rounded-lg border border-black/10 bg-black/10 md:grid-cols-2 xl:grid-cols-4">
               <article class="bg-white p-6">
                 <h3 class="text-xl font-black">Identity</h3>
                 <p class="mt-3 text-sm leading-6 text-[#706c63]">Site URL, IndieAuth profile, author name, avatar, and public feeds.</p>
@@ -803,6 +1095,10 @@ function handleDrop(event: DragEvent) {
               <article class="bg-white p-6">
                 <h3 class="text-xl font-black">Publishing</h3>
                 <p class="mt-3 text-sm leading-6 text-[#706c63]">Repository, branch, content paths, item templates, and import rules.</p>
+              </article>
+              <article class="bg-white p-6">
+                <h3 class="text-xl font-black">Webmentions</h3>
+                <p class="mt-3 text-sm leading-6 text-[#706c63]">Endpoint URL, discovery user agent, moderation defaults, and outgoing send behavior.</p>
               </article>
               <article class="bg-white p-6">
                 <h3 class="text-xl font-black">Health</h3>
