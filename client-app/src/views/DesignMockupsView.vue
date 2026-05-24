@@ -106,11 +106,11 @@ const sections: Array<{ key: SectionKey; label: string; hint: string; count: str
 
 const cultivationFlow: CultivationFlowRow[] = [
   {
-    label: 'Incoming signals',
-    summary: 'The external web arrives as feeds, bookmarks, webmentions, backlinks, and saved references.',
+    label: 'Mangroves',
+    summary: 'The external web washes up as feeds, bookmarks, webmentions, backlinks, and saved references within the intertidal zone.',
     items: [
       {
-        title: 'The Mangroves',
+        title: 'Seeds',
         role: 'Mentions and backlinks',
         detail: 'Webmentions, backlinks, likes, replies, and places around the web that point back to the site.',
         count: '3 pending',
@@ -118,9 +118,9 @@ const cultivationFlow: CultivationFlowRow[] = [
         section: 'mentions',
       },
       {
-        title: 'Mangrove Roots',
+        title: 'Roots',
         role: 'Saved sources',
-        detail: 'Blogs, bookmarks, docs, quotes, reading notes, and references that can root into future writing.',
+        detail: 'Blogs, bookmarks, docs, quotes, reading notes, and references; semiwild propagation that can take root in future writing.',
         count: '38 items',
         action: 'Open roots',
         section: 'reader',
@@ -128,7 +128,7 @@ const cultivationFlow: CultivationFlowRow[] = [
     ],
   },
   {
-    label: 'Cultivation',
+    label: 'The Garden',
     summary: 'Your own publishing lives in the Garden Home: durable articles, working notes, and lightweight activity.',
     items: [
       {
@@ -158,25 +158,17 @@ const cultivationFlow: CultivationFlowRow[] = [
     ],
   },
   {
-    label: 'Protected growth',
-    summary: 'Experimental and not-yet-public work gets its own protected place before it joins the Garden.',
+    label: 'The Greenhouse',
+    summary: 'Projects and experiments that I have written about.',
     items: [
       {
-        title: 'The Greenhouse',
-        role: 'Projects and experiments',
-        detail: 'Projects, prototypes, tools, one-off pages, and small systems still getting light and attention.',
+        title: 'Projects',
+        role: 'Things I\'m building',
+        detail: 'Projects, prototypes, tools, one-off pages, and small systems.',
         count: '5 pages',
         action: 'Open greenhouse',
         section: 'pages',
-      },
-      {
-        title: 'Harvest',
-        role: 'Ready to publish',
-        detail: 'Focused writing and publish controls for work ready to move from private tending to public presence.',
-        count: '2 ready',
-        action: 'Prepare harvest',
-        section: 'develop',
-      },
+      }
     ],
   },
 ]
@@ -640,7 +632,7 @@ function handleDrop(event: DragEvent) {
       <section class="mx-auto min-w-0 max-w-[96rem]">
         <div v-if="activeSection === 'dashboard'" class="p-5 sm:p-8">
           <section class="rounded-lg border border-black/10 bg-white p-6 shadow-[0_18px_50px_rgba(20,20,20,0.06)] sm:p-8">
-            <div class="border-b border-black/10 pb-8">
+            <div>
               <h2 class="sr-only">Garden Home dashboard</h2>
               <img
                 :src="gardenHedgeGateUrl"
