@@ -20,7 +20,7 @@ const principles = [
   },
   {
     title: 'Moderated participation',
-    body: 'Webmentions are treated as an inbox first and public content second. Nothing from another site appears until it is verified and approved.',
+    body: 'The Mangroves are treated as an inbox first and public content second. Nothing from another site appears until it is verified and approved.',
   },
   {
     title: 'Cards for surfaces, rows for work',
@@ -33,7 +33,7 @@ const components = [
   { name: 'Dashboard tile', detail: 'Large title, compact count, and one-line purpose. Tiles are navigation, not status overload.' },
   { name: 'Garden row', detail: 'Maturity mark, title, summary, type, maturity, and status. The row is the main browsing unit.' },
   { name: 'Side panel', detail: 'Context stays beside the work: research, controls, metadata, and a persistent Cultivate action.' },
-  { name: 'Mention row', detail: 'Incoming source, target, inferred type, verification state, and approve or reject controls.' },
+  { name: 'Mangrove row', detail: 'Incoming source, target, inferred type, verification state, and approve or reject controls.' },
   { name: 'Publish checklist', detail: 'Outgoing Webmention discovery sits beside publish, with send toggles and local mention-type hints.' },
   { name: 'Quick mention', detail: 'Likes, bookmarks, reposts, and RSVPs can generate a tiny source entry without requiring a full post body.' },
   { name: 'Buttons', detail: 'Black for primary actions, white bordered for navigation, coral only for publish/destructive attention.' },
@@ -52,7 +52,7 @@ const currentPages = [
   {
     title: 'Dashboard',
     label: 'Jumping off place',
-    items: ['Garden', 'Posts and notes', 'Mentions', 'Settings', 'Health'],
+    items: ['Garden Home', 'Articles', 'Notes', 'Activity Feed', 'The Mangroves', 'Settings'],
   },
   {
     title: 'Posts and Notes',
@@ -65,8 +65,8 @@ const currentPages = [
     items: ['Focused editor', 'Metadata panel', 'Outgoing Webmentions', 'Preview', 'Publish'],
   },
   {
-    title: 'Mentions',
-    label: 'Webmention moderation',
+    title: 'The Mangroves',
+    label: 'External signals',
     items: ['Incoming queue', 'Verified source and target', 'Approve before publish', 'Quick like/bookmark send'],
   },
 ]
@@ -74,14 +74,14 @@ const currentPages = [
 const settingsItems = [
   ['Identity', 'Site URL, IndieAuth profile, author details, public feeds.'],
   ['Publishing', 'Repository, branch, folders, filenames, templates, import rules.'],
-  ['Webmentions', 'Endpoint URL, discovery user agent, moderation defaults, and outgoing send behavior.'],
+  ['Mangroves', 'Webmention endpoint, backlink discovery, moderation defaults, and outgoing send behavior.'],
   ['Health', 'Storage, GitHub, website generation, RSS checks, recent job state.'],
 ]
 
 const gardenIdeas = [
   {
     title: 'The reader as compost heap',
-    summary: 'Reader, bookmarks, notes, and essays as one loop: gather, tend, publish, revisit.',
+    summary: 'Mangrove roots, notes, and essays as one loop: gather, tend, publish, revisit.',
     status: 'Small tree',
     stampUrl: smallTreeStampUrl,
   },
@@ -218,8 +218,8 @@ const mentionRows = [
       <section class="mt-8 grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
         <div class="rounded-lg border border-black/10 bg-white shadow-[0_18px_50px_rgba(20,20,20,0.06)]">
           <div class="border-b border-black/10 p-6 sm:p-8">
-            <p class="text-xs font-black uppercase tracking-[0.18em] text-[#8b887f]">Garden and ideas cultivation</p>
-            <h2 class="mt-2 text-4xl font-black">Ideas are cultivated here.</h2>
+            <p class="text-xs font-black uppercase tracking-[0.18em] text-[#8b887f]">Garden Home</p>
+            <h2 class="mt-2 text-4xl font-black">Articles, notes, and activity are cultivated here.</h2>
             <div class="mt-6 flex gap-3">
               <div class="min-h-14 flex-1 rounded-md border border-black/10 bg-[#fbfaf7] px-5 py-4 text-lg text-[#8b887f]">Start typing to plant an idea...</div>
               <button type="button" class="rounded-md bg-black px-6 text-sm font-bold text-white">Plant</button>
@@ -272,10 +272,10 @@ const mentionRows = [
       <section class="mt-8 grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
         <div class="rounded-lg border border-black/10 bg-white shadow-[0_18px_50px_rgba(20,20,20,0.06)]">
           <div class="border-b border-black/10 p-6 sm:p-8">
-            <p class="text-xs font-black uppercase tracking-[0.18em] text-[#8b887f]">Webmentions</p>
-            <h2 class="mt-2 text-4xl font-black">Mentions are reviewed before they become public.</h2>
+            <p class="text-xs font-black uppercase tracking-[0.18em] text-[#8b887f]">The Mangroves</p>
+            <h2 class="mt-2 text-4xl font-black">External signals are reviewed before they become public.</h2>
             <p class="mt-3 max-w-3xl text-sm leading-6 text-[#706c63]">
-              The protocol sends a source URL and target URL. LittlePublisher verifies the source, infers the interaction type, then asks for approval before display.
+              The protocol sends a source URL and target URL. LittlePublisher verifies the source, infers the interaction type, then asks for approval before display as a mangrove root.
             </p>
           </div>
           <div class="divide-y divide-black/10">

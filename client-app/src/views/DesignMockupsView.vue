@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import IdeaPanel from '@/components/IdeaPanel.vue'
+import gardenHedgeGateUrl from '@/assets/illustrations/garden-hedge-gate.png'
 import driftwoodStampUrl from '@/assets/maturity/driftwood-stamp.png'
 import pohutukawaStampUrl from '@/assets/maturity/pohutukawa-stamp.png'
 import seedStampUrl from '@/assets/maturity/seed-stamp.png'
@@ -77,15 +78,107 @@ interface OutgoingWebmention {
   status: string
 }
 
+interface CultivationFlowItem {
+  title: string
+  role: string
+  detail: string
+  count: string
+  action: string
+  section: SectionKey
+}
+
+interface CultivationFlowRow {
+  label: string
+  summary: string
+  items: CultivationFlowItem[]
+}
+
 const sections: Array<{ key: SectionKey; label: string; hint: string; count: string }> = [
   { key: 'dashboard', label: 'Dashboard', hint: 'Jumping off point', count: '' },
-  { key: 'garden', label: 'Garden', hint: 'Ideas in progress', count: '12' },
-  { key: 'develop', label: 'Develop', hint: 'Focused writing', count: '1' },
-  { key: 'reader', label: 'Reader', hint: 'Blogs and bookmarks', count: '38' },
-  { key: 'mentions', label: 'Mentions', hint: 'Webmention inbox', count: '3' },
+  { key: 'garden', label: 'Garden Home', hint: 'Articles, notes, and activity', count: '12' },
+  { key: 'develop', label: 'Harvest', hint: 'Focused writing', count: '1' },
+  { key: 'reader', label: 'Mangrove Roots', hint: 'Blogs, bookmarks, and references', count: '38' },
+  { key: 'mentions', label: 'The Mangroves', hint: 'Mentions and backlinks', count: '3' },
   { key: 'books', label: 'Books', hint: 'Reading notes', count: '7' },
   { key: 'pages', label: 'Pages', hint: 'One-off pages', count: '5' },
   { key: 'settings', label: 'Settings', hint: 'Config and health', count: '' },
+]
+
+const cultivationFlow: CultivationFlowRow[] = [
+  {
+    label: 'Incoming signals',
+    summary: 'The external web arrives as feeds, bookmarks, webmentions, backlinks, and saved references.',
+    items: [
+      {
+        title: 'The Mangroves',
+        role: 'Mentions and backlinks',
+        detail: 'Webmentions, backlinks, likes, replies, and places around the web that point back to the site.',
+        count: '3 pending',
+        action: 'Review signals',
+        section: 'mentions',
+      },
+      {
+        title: 'Mangrove Roots',
+        role: 'Saved sources',
+        detail: 'Blogs, bookmarks, docs, quotes, reading notes, and references that can root into future writing.',
+        count: '38 items',
+        action: 'Open roots',
+        section: 'reader',
+      },
+    ],
+  },
+  {
+    label: 'Cultivation',
+    summary: 'Your own publishing lives in the Garden Home: durable articles, working notes, and lightweight activity.',
+    items: [
+      {
+        title: 'Articles',
+        role: 'Mature writing',
+        detail: 'Long-lived technical explanations, essays, and series that are actively tended over time.',
+        count: '31 articles',
+        action: 'Tend articles',
+        section: 'garden',
+      },
+      {
+        title: 'Notes',
+        role: 'Working thoughts',
+        detail: 'Short posts, discoveries, snippets, and observations that may later grow into articles.',
+        count: '14 notes',
+        action: 'Browse notes',
+        section: 'garden',
+      },
+      {
+        title: 'Activity Feed',
+        role: 'Personal stream',
+        detail: 'Quick thoughts, photos with comments, and links to other articles with your own notes attached.',
+        count: '26 updates',
+        action: 'See stream',
+        section: 'garden',
+      },
+    ],
+  },
+  {
+    label: 'Protected growth',
+    summary: 'Experimental and not-yet-public work gets its own protected place before it joins the Garden.',
+    items: [
+      {
+        title: 'The Greenhouse',
+        role: 'Projects and experiments',
+        detail: 'Projects, prototypes, tools, one-off pages, and small systems still getting light and attention.',
+        count: '5 pages',
+        action: 'Open greenhouse',
+        section: 'pages',
+      },
+      {
+        title: 'Harvest',
+        role: 'Ready to publish',
+        detail: 'Focused writing and publish controls for work ready to move from private tending to public presence.',
+        count: '2 ready',
+        action: 'Prepare harvest',
+        section: 'develop',
+      },
+    ],
+  },
 ]
 
 const maturityLevels: MaturityLevel[] = [
@@ -112,7 +205,7 @@ const ideas = ref<Idea[]>([
     title: 'The reader as compost heap',
     type: 'Post',
     maturity: 'small-tree',
-    summary: 'Reader, bookmarks, notes, and essays as one loop: gather, tend, publish, revisit.',
+    summary: 'Mangrove roots, notes, and essays as one loop: gather, tend, publish, revisit.',
     folder: '/posts',
     filename: 'reader-compost-heap.md',
     status: 'Developing',
@@ -236,8 +329,8 @@ const healthChecks = [
   { name: 'Storage', detail: 'Table storage reachable', ok: true },
   { name: 'GitHub', detail: 'Push token valid', ok: true },
   { name: 'Website', detail: 'Last publish finished in 18s', ok: true },
-  { name: 'Webmentions', detail: 'Endpoint receiving, 3 awaiting review', ok: true },
-  { name: 'RSS', detail: 'Reader import paused until feeds are configured', ok: false },
+  { name: 'Mangroves', detail: 'Endpoint receiving, 3 external signals awaiting review', ok: true },
+  { name: 'RSS', detail: 'Mangrove root import paused until feeds are configured', ok: false },
 ]
 const webmentionActivities = ref<WebmentionActivity[]>([
   {
@@ -547,36 +640,45 @@ function handleDrop(event: DragEvent) {
       <section class="mx-auto min-w-0 max-w-[96rem]">
         <div v-if="activeSection === 'dashboard'" class="p-5 sm:p-8">
           <section class="rounded-lg border border-black/10 bg-white p-6 shadow-[0_18px_50px_rgba(20,20,20,0.06)] sm:p-8">
-            <div class="mb-10 flex items-center justify-between gap-4">
-              <div>
-                <p class="text-xl font-black">LittlePublisher</p>
-                <p class="mt-1 text-sm text-[#77736b]">michael.example</p>
-              </div>
-              <span class="rounded-full border border-black/10 px-3 py-1 text-xs font-bold text-[#77736b]">Concept</span>
+            <div class="border-b border-black/10 pb-8">
+              <h2 class="sr-only">Garden Home dashboard</h2>
+              <img
+                :src="gardenHedgeGateUrl"
+                alt="Watercolor hedge with a small garden gate"
+                class="mx-auto block h-36 w-full object-contain object-bottom sm:h-44 lg:h-52"
+              />
             </div>
 
-            <div class="flex flex-col gap-4 border-b border-black/10 pb-8 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <p class="text-sm text-[#77736b]">Today</p>
-                <h2 class="mt-2 max-w-3xl text-5xl font-black leading-[0.95]">What needs tending before the next publish?</h2>
-              </div>
-              <button type="button" class="w-fit rounded-full bg-black px-5 py-3 text-sm font-bold text-white" @click="activeSection = 'garden'">Open garden</button>
-            </div>
-
-            <div class="mt-8 grid gap-px overflow-hidden rounded-lg border border-black/10 bg-black/10 sm:grid-cols-2 xl:grid-cols-4">
-              <button
-                v-for="section in sections.filter((item) => item.key !== 'dashboard')"
-                :key="section.key"
-                type="button"
-                class="bg-white p-6 text-left transition hover:bg-[#fbfaf7] focus:outline-none focus:ring-2 focus:ring-black/20"
-                @click="setSection(section.key)"
+            <div class="mt-8 space-y-4">
+              <section
+                v-for="row in cultivationFlow"
+                :key="row.label"
+                class="grid gap-px overflow-hidden rounded-lg border border-black/10 bg-black/10 lg:grid-cols-[15rem_minmax(0,1fr)]"
               >
-                <div class="flex items-start justify-between gap-3">
-                  <h3 class="text-2xl font-black">{{ section.label }}</h3>
-                  <span class="rounded-full border border-black/10 px-3 py-1 text-xs text-[#77736b]">{{ section.count || 'OK' }}</span>
+                <div class="bg-[#fbfaf7] p-5">
+                  <p class="text-xs font-black uppercase tracking-[0.18em] text-[#8b887f]">{{ row.label }}</p>
+                  <p class="mt-4 text-sm leading-6 text-[#706c63]">{{ row.summary }}</p>
                 </div>
-                <p class="mt-8 text-sm leading-6 text-[#706c63]">{{ section.hint }}</p>
-              </button>
+                <div class="grid gap-px bg-black/10 md:grid-cols-2 xl:grid-cols-3">
+                  <button
+                    v-for="item in row.items"
+                    :key="item.title"
+                    type="button"
+                    class="min-h-56 bg-white p-6 text-left transition hover:bg-[#fbfaf7] focus:outline-none focus:ring-2 focus:ring-black/20"
+                    @click="setSection(item.section)"
+                  >
+                    <div class="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 class="text-2xl font-black">{{ item.title }}</h3>
+                        <p class="mt-1 text-sm font-semibold text-[#8b887f]">{{ item.role }}</p>
+                      </div>
+                      <span class="rounded-full border border-black/10 px-3 py-1 text-xs text-[#77736b]">{{ item.count }}</span>
+                    </div>
+                    <p class="mt-8 text-sm leading-6 text-[#706c63]">{{ item.detail }}</p>
+                    <p class="mt-6 text-xs font-black uppercase tracking-[0.14em] text-[#8b887f]">{{ item.action }}</p>
+                  </button>
+                </div>
+              </section>
             </div>
           </section>
         </div>
@@ -586,8 +688,8 @@ function handleDrop(event: DragEvent) {
             <button type="button" class="mb-5 rounded-full border border-black/15 bg-white px-4 py-2 text-sm font-bold text-[#4b4944] hover:border-black" @click="backToDashboard">Back to dashboard</button>
             <div class="rounded-lg border border-black/10 bg-white shadow-[0_18px_50px_rgba(20,20,20,0.06)]">
               <div class="border-b border-black/10 p-6 sm:p-8">
-                <p class="text-sm font-semibold uppercase tracking-[0.18em] text-[#8b887f]">The garden</p>
-                <h2 class="mt-2 text-4xl font-black">Ideas are cultivated here.</h2>
+                <p class="text-sm font-semibold uppercase tracking-[0.18em] text-[#8b887f]">Garden Home</p>
+                <h2 class="mt-2 text-4xl font-black">Articles, notes, and activity are cultivated here.</h2>
                 <form class="mt-6 flex flex-col gap-3 sm:flex-row" @submit.prevent="createIdea">
                   <input v-model="ideaTitle" class="min-h-14 flex-1 rounded-md border border-black/10 bg-[#fbfaf7] px-5 text-lg outline-none focus:border-black" placeholder="Start typing to plant an idea..." />
                   <button type="submit" class="rounded-md bg-black px-6 py-4 text-sm font-bold text-white">Plant</button>
@@ -774,7 +876,7 @@ function handleDrop(event: DragEvent) {
                     :class="activeReaderView === 'today' ? 'bg-[#e7f7e9] text-[#23834b]' : 'text-[#4b4944] hover:bg-white'"
                     @click="activeReaderView = 'today'"
                   >
-                    <span>Today</span>
+                    <span>Incoming roots</span>
                     <span>{{ readerPosts.filter((post) => !post.read).length }}</span>
                   </button>
                   <button
@@ -783,7 +885,7 @@ function handleDrop(event: DragEvent) {
                     :class="activeReaderView === 'readLater' ? 'bg-[#e7f7e9] text-[#23834b]' : 'text-[#4b4944] hover:bg-white'"
                     @click="activeReaderView = 'readLater'"
                   >
-                    <span>Read later</span>
+                    <span>Reference shelf</span>
                     <span>{{ readerPosts.filter((post) => post.readLater).length }}</span>
                   </button>
                   <button
@@ -801,7 +903,7 @@ function handleDrop(event: DragEvent) {
                     :class="activeReaderView === 'sites' ? 'bg-[#e7f7e9] text-[#23834b]' : 'text-[#4b4944] hover:bg-white'"
                     @click="activeReaderView = 'sites'"
                   >
-                    <span>Tracked sites</span>
+                    <span>Blogs I Like</span>
                     <span>{{ readerPosts.length }}</span>
                   </button>
                 </div>
@@ -823,7 +925,7 @@ function handleDrop(event: DragEvent) {
                   </div>
                 </div>
 
-                <button type="button" class="mt-8 w-full rounded-md bg-black px-4 py-3 text-sm font-bold text-white" @click="activeReaderView = 'sites'">Add or manage feeds</button>
+                <button type="button" class="mt-8 w-full rounded-md bg-black px-4 py-3 text-sm font-bold text-white" @click="activeReaderView = 'sites'">Add or manage blogs</button>
               </aside>
 
               <div class="p-6 sm:p-8">
@@ -831,13 +933,13 @@ function handleDrop(event: DragEvent) {
                   <div class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
                     <div>
                       <h2 class="text-4xl font-black">
-                        {{ selectedReaderPostId ? selectedReaderPost.blog : activeReaderView === 'today' ? 'Today' : activeReaderView === 'readLater' ? 'Read later' : activeReaderView === 'sites' ? 'Tracked sites' : 'Bookmarks' }}
+                        {{ selectedReaderPostId ? selectedReaderPost.blog : activeReaderView === 'today' ? 'Mangrove Roots' : activeReaderView === 'readLater' ? 'Reference shelf' : activeReaderView === 'sites' ? 'Blogs I Like' : 'Bookmarks' }}
                       </h2>
                       <p class="mt-2 text-sm text-[#706c63]">
-                        {{ selectedReaderPostId ? selectedReaderPost.category : activeReaderView === 'sites' ? 'Manage feed URLs, categories, blog roll status, and sync health.' : `${visibleReaderPosts.length} items from ${activeReaderCategory}` }}
+                        {{ selectedReaderPostId ? selectedReaderPost.category : activeReaderView === 'sites' ? 'Manage feed URLs, categories, blog roll status, and sync health.' : `${visibleReaderPosts.length} external roots from ${activeReaderCategory}` }}
                       </p>
                     </div>
-                    <button v-if="selectedReaderPostId" type="button" class="rounded-full border border-black/15 px-4 py-2 text-sm font-bold text-[#4b4944] hover:border-black" @click="closeReaderPost">Back to reader</button>
+                    <button v-if="selectedReaderPostId" type="button" class="rounded-full border border-black/15 px-4 py-2 text-sm font-bold text-[#4b4944] hover:border-black" @click="closeReaderPost">Back to roots</button>
                   </div>
                 </div>
 
@@ -858,8 +960,8 @@ function handleDrop(event: DragEvent) {
                   </article>
 
                   <aside class="border-t border-black/10 pt-6 xl:border-l xl:border-t-0 xl:pl-6">
-                    <h3 class="text-2xl font-black">Reader notes</h3>
-                    <p class="mt-2 text-sm leading-6 text-[#706c63]">Tag a section, leave a free note, or turn either into a Garden idea.</p>
+                    <h3 class="text-2xl font-black">Reading notes</h3>
+                    <p class="mt-2 text-sm leading-6 text-[#706c63]">Tag a section, leave a free note, or plant either as a Garden seed.</p>
                     <label class="mt-5 block">
                       <span class="text-xs font-black uppercase tracking-[0.14em] text-[#8b887f]">Tag</span>
                       <select v-model="readerNoteTag" class="mt-2 w-full rounded-md border border-black/10 bg-[#fbfaf7] px-3 py-2 text-sm">
@@ -954,10 +1056,10 @@ function handleDrop(event: DragEvent) {
             <div class="border-b border-black/10 p-6 sm:p-8">
               <div class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                  <p class="text-sm font-semibold uppercase tracking-[0.18em] text-[#8b887f]">Webmentions</p>
-                  <h2 class="mt-2 text-4xl font-black">Mentions from around the web</h2>
+                  <p class="text-sm font-semibold uppercase tracking-[0.18em] text-[#8b887f]">The Mangroves</p>
+                  <h2 class="mt-2 text-4xl font-black">Signals from the wider web</h2>
                   <p class="mt-3 max-w-3xl text-sm leading-6 text-[#706c63]">
-                    Incoming source and target URLs are verified first, then held for review. Approved mentions can be published as replies, likes, bookmarks, RSVPs, or plain mentions.
+                    Incoming source and target URLs are verified first, then held for review. Approved mentions, backlinks, likes, bookmarks, and replies can appear as mangrove roots around the relevant content.
                   </p>
                 </div>
                 <div class="grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-black/10 bg-black/10 text-center">
@@ -1012,7 +1114,7 @@ function handleDrop(event: DragEvent) {
               </div>
 
               <aside class="border-t border-black/10 bg-[#fbfaf7] p-5 sm:p-6 lg:border-l lg:border-t-0">
-                <h3 class="text-2xl font-black">Moderation rules</h3>
+                <h3 class="text-2xl font-black">Mangrove rules</h3>
                 <div class="mt-5 space-y-4 text-sm leading-6 text-[#706c63]">
                   <p><span class="font-bold text-black">Receive:</span> accept source and target URLs, then queue verification.</p>
                   <p><span class="font-bold text-black">Verify:</span> fetch the source and confirm it links exactly to the target before publication.</p>
@@ -1097,8 +1199,8 @@ function handleDrop(event: DragEvent) {
                 <p class="mt-3 text-sm leading-6 text-[#706c63]">Repository, branch, content paths, item templates, and import rules.</p>
               </article>
               <article class="bg-white p-6">
-                <h3 class="text-xl font-black">Webmentions</h3>
-                <p class="mt-3 text-sm leading-6 text-[#706c63]">Endpoint URL, discovery user agent, moderation defaults, and outgoing send behavior.</p>
+                <h3 class="text-xl font-black">Mangroves</h3>
+                <p class="mt-3 text-sm leading-6 text-[#706c63]">Webmention endpoint, backlink discovery, moderation defaults, and outgoing send behavior.</p>
               </article>
               <article class="bg-white p-6">
                 <h3 class="text-xl font-black">Health</h3>
