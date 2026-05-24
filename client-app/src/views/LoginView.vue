@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { AppButton, AppSurface } from '@/components'
 import logoUrl from '@/assets/brand/littlepublisher-logo.png'
 
 const route = useRoute()
@@ -25,40 +26,37 @@ function handleLogin() {
 </script>
 
 <template>
-  <main class="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-    <div class="mb-8 flex justify-center sm:mb-10">
-      <img
-        :src="logoUrl"
-        alt="LittlePublisher"
-        class="h-auto w-full max-w-[17.5rem] object-contain sm:max-w-xs"
-        width="1254"
-        height="1254"
-      />
-    </div>
-
-    <section class="mx-auto w-full max-w-xl rounded-lg border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-      <div class="mb-6 text-center">
-        <p class="text-sm font-medium uppercase text-slate-500">Sign in</p>
-        <h1 class="mt-2 text-2xl font-semibold text-slate-950">Welcome back</h1>
-        <p class="mt-2 text-sm text-slate-600">
+  <main class="lp-shell flex min-h-screen items-center">
+    <div class="mx-auto grid w-full max-w-5xl gap-8 lg:grid-cols-[minmax(0,1fr)_28rem] lg:items-center">
+      <section class="text-center lg:text-left">
+        <img
+          :src="logoUrl"
+          alt="LittlePublisher"
+          class="mx-auto h-auto w-full max-w-[17.5rem] object-contain lg:mx-0 lg:max-w-sm"
+          width="1254"
+          height="1254"
+        />
+        <p class="lp-kicker mt-8">LittlePublisher</p>
+        <h1 class="lp-heading mt-3 text-4xl leading-none sm:text-5xl">Welcome back</h1>
+        <p class="lp-copy mx-auto mt-4 max-w-xl text-base lg:mx-0">
           Use the website configured for this LittlePublisher instance.
         </p>
-      </div>
+      </section>
 
-      <div class="space-y-4">
-        <div v-if="error" class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+      <AppSurface as="section" padding="lg" class="w-full">
+        <div class="mb-6">
+          <p class="lp-kicker">Sign in</p>
+          <h2 class="lp-heading mt-2 text-2xl">Continue to your dashboard</h2>
+        </div>
+
+        <div v-if="error" class="mb-4 rounded-md border border-lp-danger/20 bg-lp-danger-soft px-3 py-2 text-sm font-semibold text-lp-danger">
           {{ error }}
         </div>
 
-        <button
-          type="button"
-          class="inline-flex w-full cursor-pointer items-center justify-center rounded-md bg-slate-950 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
-          :disabled="isLoading"
-          @click="handleLogin"
-        >
+        <AppButton full-width size="lg" :loading="isLoading" @click="handleLogin">
           {{ isLoading ? 'Redirecting...' : 'Log in' }}
-        </button>
-      </div>
-    </section>
+        </AppButton>
+      </AppSurface>
+    </div>
   </main>
 </template>

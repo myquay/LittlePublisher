@@ -4,6 +4,7 @@ import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useTokenRefresh } from '@/composables/useTokenRefresh'
 import { setupService } from '@/services/setupService'
+import { AppButton, AppSurface, LoadingState } from '@/components'
 import SetupView from '@/views/SetupView.vue'
 import bookMarkUrl from '@/assets/brand/littlepublisher-book-mark.png'
 import type { SetupStatus } from '@/types/setup'
@@ -68,11 +69,11 @@ function signOut() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-50 text-slate-950">
-    <header v-if="showHeader" class="border-b border-slate-200 bg-white">
-      <nav class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
+  <div class="lp-page">
+    <header v-if="showHeader" class="border-b border-lp-border bg-lp-surface/90">
+      <nav class="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
         <div class="flex items-center gap-5">
-          <RouterLink to="/" class="flex items-center gap-2 text-base font-semibold text-slate-950">
+          <RouterLink to="/" class="flex items-center gap-2 text-base font-black text-lp-ink">
             <img
               :src="bookMarkUrl"
               alt=""
@@ -86,47 +87,41 @@ function signOut() {
         </div>
 
         <div v-if="authStore.isAuthenticated" class="flex items-center gap-3">
-          <span class="hidden max-w-72 truncate text-sm text-slate-500 sm:inline">
+          <span class="hidden max-w-72 truncate text-sm text-lp-muted sm:inline">
             {{ authStore.user?.me }}
           </span>
-          <button
-            type="button"
-            class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-100"
-            @click="signOut"
-          >
+          <AppButton variant="secondary" size="sm" @click="signOut">
             Sign out
-          </button>
+          </AppButton>
         </div>
       </nav>
     </header>
 
     <main
       v-if="isAppLoading"
-      class="mx-auto flex min-h-screen max-w-6xl items-center px-4 py-8 sm:px-6"
+      class="mx-auto flex min-h-screen max-w-7xl items-center px-4 py-8 sm:px-6"
     >
-      <section class="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-6 text-slate-600 shadow-sm">
-        <div class="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-800"></div>
-        <p>Checking setup...</p>
-      </section>
+      <AppSurface>
+        <LoadingState label="Checking setup..." />
+      </AppSurface>
     </main>
 
     <main
       v-else-if="showSetupError"
-      class="mx-auto flex min-h-screen max-w-6xl items-center px-4 py-8 sm:px-6"
+      class="mx-auto flex min-h-screen max-w-7xl items-center px-4 py-8 sm:px-6"
     >
-      <section class="rounded-lg border border-red-200 bg-red-50 p-6 text-sm text-red-700 shadow-sm">
+      <AppSurface class="border-lp-danger/20 bg-lp-danger-soft text-sm font-semibold text-lp-danger">
         {{ setupError }}
-      </section>
+      </AppSurface>
     </main>
 
     <main
       v-else-if="!isPublicAuthRoute && isFullSetupLoading"
-      class="mx-auto flex min-h-screen max-w-6xl items-center px-4 py-8 sm:px-6"
+      class="mx-auto flex min-h-screen max-w-7xl items-center px-4 py-8 sm:px-6"
     >
-      <section class="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-6 text-slate-600 shadow-sm">
-        <div class="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-800"></div>
-        <p>Checking setup...</p>
-      </section>
+      <AppSurface>
+        <LoadingState label="Checking setup..." />
+      </AppSurface>
     </main>
 
     <SetupView
