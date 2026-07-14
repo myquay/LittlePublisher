@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using AspNet.Security.IndieAuth;
+using LittlePublisher.Web.Authentication;
 using AspNet.Security.IndieAuth.Infrastructure;
 using LittlePublisher.Web.Configuration;
 using LittlePublisher.Web.Controllers;
@@ -105,6 +106,31 @@ public class AuthControllerTests
         Assert.Contains(jwt.Claims, claim => claim.Type == "me" && claim.Value == "https://example.com/");
         Assert.Contains(jwt.Claims, claim => claim.Type == "scope" && claim.Value == "create");
         Assert.True(jwt.ValidTo > DateTime.UtcNow);
+    }
+
+    [Fact]
+    public async Task IndieAuthRemoteFailureHandler_RedirectsToLoginWithSafeError()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+
+        var httpContext = new DefaultHttpContext
+        {
+            RequestServices = services.BuildServiceProvider()
+        };
+        var context = new RemoteFailureContext(
+            httpContext,
+            new AuthenticationScheme(IndieAuthDefaults.AuthenticationScheme, null, typeof(IAuthenticationHandler)),
+            new IndieAuthOptions(),
+            new InvalidOperationException("provider metadata was not found"));
+
+        await IndieAuthRemoteFailureHandler.HandleAsync(context);
+
+        Assert.Equal(StatusCodes.Status302Found, httpContext.Response.StatusCode);
+        Assert.Equal(
+            "/login?error=Unable%20to%20start%20IndieAuth%20login%20for%20the%20configured%20website",
+            httpContext.Response.Headers.Location);
+        Assert.True(context.Result?.Handled);
     }
 
     private static AuthController CreateController(

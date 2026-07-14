@@ -42,6 +42,10 @@
     font: inherit;
   }
 
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+
   :focus-visible {
     @apply outline-2 outline-offset-2 outline-lp-primary;
   }

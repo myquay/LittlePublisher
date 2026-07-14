@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { AppButton, AppSurface, EmptyState, LoadingState, StatusBadge } from '@/components'
 import { adminService } from '@/services/adminService'
 import type { AdminCheck, AdminDashboard, ImportRepositoryResult } from '@/types/admin'
 
@@ -87,10 +88,15 @@ function formatDate(value: string) {
   }).format(new Date(value))
 }
 
-function statusClass(status: string) {
-  if (status === 'succeeded') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
-  if (status === 'failed') return 'border-rose-200 bg-rose-50 text-rose-700'
-  return 'border-amber-200 bg-amber-50 text-amber-700'
+function statusTone(status: string) {
+  if (status === 'succeeded') return 'success'
+  if (status === 'failed') return 'danger'
+  return 'warning'
+}
+
+function checkTone(check: AdminCheck | null) {
+  if (!check) return 'neutral'
+  return check.ok ? 'success' : 'danger'
 }
 
 function readError(error: unknown) {
@@ -111,189 +117,194 @@ function readError(error: unknown) {
 </script>
 
 <template>
-  <main class="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+  <main class="lp-shell">
     <div v-if="authStore.user" class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
       <section class="space-y-6">
-        <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <AppSurface padding="lg">
           <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 class="text-lg font-semibold text-slate-950">Publishing activity</h2>
-              <p class="mt-1 text-sm text-slate-500">Recent Micropub jobs and generated Hugo files.</p>
+              <p class="lp-kicker">Dashboard</p>
+              <h1 class="lp-heading mt-2 text-3xl">Publishing activity</h1>
+              <p class="lp-copy mt-2 text-sm">Recent Micropub jobs and generated Hugo files.</p>
             </div>
-            <button
-              type="button"
-              class="w-fit rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-              @click="loadDashboard"
-            >
+            <AppButton variant="secondary" :loading="loadingDashboard" @click="loadDashboard">
               Refresh
-            </button>
+            </AppButton>
           </div>
 
-          <div v-if="loadingDashboard" class="mt-6 flex items-center gap-3 text-slate-600">
-            <div class="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-800"></div>
-            <p>Loading activity...</p>
-          </div>
+          <LoadingState v-if="loadingDashboard" class="mt-6" label="Loading activity..." />
 
-          <p v-else-if="dashboardError" class="mt-6 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+          <p v-else-if="dashboardError" class="mt-6 rounded-md border border-lp-danger/20 bg-lp-danger-soft p-3 text-sm font-semibold text-lp-danger">
             {{ dashboardError }}
           </p>
 
           <div v-else class="mt-6 space-y-4">
-            <div v-if="!dashboard?.jobs.length" class="rounded-md border border-dashed border-slate-300 p-5 text-sm text-slate-500">
-              No publish jobs yet.
-            </div>
+            <EmptyState
+              v-if="!dashboard?.jobs.length"
+              title="No publish jobs yet."
+              description="New Micropub requests will appear here after LittlePublisher starts receiving posts."
+            />
 
             <article
               v-for="job in dashboard?.jobs"
               :key="job.id"
-              class="rounded-md border border-slate-200 p-4"
+              class="rounded-md border border-lp-border bg-lp-surface-soft p-4"
             >
               <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div class="min-w-0">
-                  <p class="text-sm font-medium text-slate-950">{{ job.action }}</p>
-                  <p class="mt-1 truncate text-sm text-slate-500">{{ job.clientId || job.userMe }}</p>
+                  <p class="text-sm font-black text-lp-ink">{{ job.action }}</p>
+                  <p class="mt-1 truncate text-sm text-lp-muted">{{ job.clientId || job.userMe }}</p>
                 </div>
-                <span class="w-fit rounded-full border px-2.5 py-1 text-xs font-medium" :class="statusClass(job.status)">
+                <StatusBadge :tone="statusTone(job.status)">
                   {{ job.status }}
-                </span>
+                </StatusBadge>
               </div>
 
               <a
                 v-if="job.publishedUrl"
                 :href="job.publishedUrl"
-                class="mt-3 block break-all text-sm font-medium text-sky-700 hover:text-sky-900"
+                class="mt-3 block break-all text-sm font-bold text-lp-info hover:text-lp-ink"
               >
                 {{ job.publishedUrl }}
               </a>
-              <p v-if="job.error" class="mt-3 text-sm text-rose-700">{{ job.error }}</p>
-              <p class="mt-3 text-xs text-slate-500">{{ formatDate(job.updatedUtc) }}</p>
+              <p v-if="job.error" class="mt-3 text-sm font-semibold text-lp-danger">{{ job.error }}</p>
+              <p class="mt-3 text-xs font-semibold text-lp-subtle">{{ formatDate(job.updatedUtc) }}</p>
             </article>
           </div>
-        </div>
+        </AppSurface>
 
-        <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 class="text-lg font-semibold text-slate-950">Published items</h2>
-
-          <div v-if="!loadingDashboard && !dashboard?.items.length" class="mt-5 rounded-md border border-dashed border-slate-300 p-5 text-sm text-slate-500">
-            No published items have been recorded.
+        <AppSurface padding="lg">
+          <div>
+            <p class="lp-kicker">Archive</p>
+            <h2 class="lp-heading mt-2 text-2xl">Published items</h2>
           </div>
 
-          <div v-else class="mt-5 divide-y divide-slate-200">
+          <EmptyState
+            v-if="!loadingDashboard && !dashboard?.items.length"
+            class="mt-5"
+            title="No published items have been recorded."
+            description="Imported or newly generated items will show their URL, file path, and published date here."
+          />
+
+          <div v-else-if="dashboard?.items.length" class="mt-5 divide-y divide-lp-border">
             <article v-for="item in dashboard?.items" :key="item.id" class="py-4 first:pt-0 last:pb-0">
-              <a :href="item.url" class="break-all text-sm font-semibold text-slate-950 hover:text-sky-800">
+              <a :href="item.url" class="break-all text-sm font-black text-lp-ink hover:text-lp-info">
                 {{ item.title || item.url }}
               </a>
-              <p class="mt-1 break-all text-xs text-slate-500">{{ item.filePath }}</p>
+              <p class="mt-1 break-all text-xs font-semibold text-lp-subtle">{{ item.filePath }}</p>
               <div class="mt-2 flex flex-wrap items-center gap-2">
-                <span
-                  v-if="item.draft"
-                  class="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
-                >
+                <StatusBadge v-if="item.draft" tone="warning">
                   Draft
-                </span>
-                <p v-else class="text-sm text-slate-600">{{ formatDate(item.publishedUtc) }}</p>
+                </StatusBadge>
+                <p v-else class="text-sm text-lp-muted">{{ formatDate(item.publishedUtc) }}</p>
               </div>
             </article>
           </div>
-        </div>
+        </AppSurface>
       </section>
 
       <aside class="space-y-6">
-        <section class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 class="text-lg font-semibold text-slate-950">Signed in</h2>
-          <p class="mt-3 break-all text-sm text-slate-600">{{ authStore.user.me }}</p>
-        </section>
+        <AppSurface>
+          <p class="lp-kicker">Identity</p>
+          <h2 class="lp-heading mt-2 text-xl">Signed in</h2>
+          <p class="mt-3 break-all text-sm text-lp-muted">{{ authStore.user.me }}</p>
+        </AppSurface>
 
-        <section class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 class="text-lg font-semibold text-slate-950">Health checks</h2>
-          <div class="mt-5 space-y-4">
+        <AppSurface>
+          <div class="flex items-start justify-between gap-3">
             <div>
-              <button
-                type="button"
-                class="w-full rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-wait disabled:bg-slate-500"
-                :disabled="checkingStorage"
-                @click="runStorageCheck"
-              >
+              <p class="lp-kicker">Operations</p>
+              <h2 class="lp-heading mt-2 text-xl">Health checks</h2>
+            </div>
+          </div>
+          <div class="mt-5 space-y-4">
+            <div class="rounded-md border border-lp-border bg-lp-surface-soft p-3">
+              <div class="flex items-center justify-between gap-3">
+                <span class="text-sm font-black text-lp-ink">Storage</span>
+                <StatusBadge :tone="checkTone(storageCheck)">
+                  {{ storageCheck ? (storageCheck.ok ? 'OK' : 'Issue') : 'Unchecked' }}
+                </StatusBadge>
+              </div>
+              <AppButton class="mt-3" full-width :loading="checkingStorage" @click="runStorageCheck">
                 {{ checkingStorage ? 'Checking storage...' : 'Check storage' }}
-              </button>
-              <p v-if="storageCheck" class="mt-2 text-sm" :class="storageCheck.ok ? 'text-emerald-700' : 'text-rose-700'">
+              </AppButton>
+              <p
+                v-if="storageCheck"
+                class="mt-2 text-sm font-semibold"
+                :class="storageCheck.ok ? 'text-lp-success' : 'text-lp-danger'"
+              >
                 {{ storageCheck.message }}
               </p>
             </div>
 
-            <div>
-              <button
-                type="button"
-                class="w-full rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-wait disabled:bg-slate-500"
-                :disabled="checkingGitHub"
-                @click="runGitHubCheck"
-              >
+            <div class="rounded-md border border-lp-border bg-lp-surface-soft p-3">
+              <div class="flex items-center justify-between gap-3">
+                <span class="text-sm font-black text-lp-ink">GitHub</span>
+                <StatusBadge :tone="checkTone(githubCheck)">
+                  {{ githubCheck ? (githubCheck.ok ? 'OK' : 'Issue') : 'Unchecked' }}
+                </StatusBadge>
+              </div>
+              <AppButton class="mt-3" full-width :loading="checkingGitHub" @click="runGitHubCheck">
                 {{ checkingGitHub ? 'Checking GitHub...' : 'Check GitHub' }}
-              </button>
-              <p v-if="githubCheck" class="mt-2 text-sm" :class="githubCheck.ok ? 'text-emerald-700' : 'text-rose-700'">
+              </AppButton>
+              <p
+                v-if="githubCheck"
+                class="mt-2 text-sm font-semibold"
+                :class="githubCheck.ok ? 'text-lp-success' : 'text-lp-danger'"
+              >
                 {{ githubCheck.message }}
               </p>
             </div>
           </div>
-        </section>
+        </AppSurface>
 
-        <section class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 class="text-lg font-semibold text-slate-950">Repository sync</h2>
+        <AppSurface>
+          <p class="lp-kicker">Repository</p>
+          <h2 class="lp-heading mt-2 text-xl">Repository sync</h2>
           <div class="mt-5 space-y-3">
-            <button
-              type="button"
-              class="w-full rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-wait disabled:bg-slate-100"
-              :disabled="syncingRepository"
-              @click="syncRepository(true)"
-            >
+            <AppButton full-width variant="secondary" :loading="syncingRepository" @click="syncRepository(true)">
               {{ syncingRepository ? 'Syncing...' : 'Preview sync' }}
-            </button>
-            <button
-              type="button"
-              class="w-full rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-wait disabled:bg-slate-500"
-              :disabled="syncingRepository"
-              @click="syncRepository(false)"
-            >
+            </AppButton>
+            <AppButton full-width :loading="syncingRepository" @click="syncRepository(false)">
               {{ syncingRepository ? 'Syncing...' : 'Import from repository' }}
-            </button>
+            </AppButton>
 
-            <p v-if="syncError" class="text-sm text-rose-700">{{ syncError }}</p>
+            <p v-if="syncError" class="rounded-md border border-lp-danger/20 bg-lp-danger-soft p-3 text-sm font-semibold text-lp-danger">{{ syncError }}</p>
 
-            <div v-if="syncResult" class="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+            <div v-if="syncResult" class="rounded-md border border-lp-border bg-lp-surface-soft p-3 text-sm text-lp-muted">
               <dl class="grid grid-cols-2 gap-x-4 gap-y-2">
                 <div>
-                  <dt class="text-xs text-slate-500">Scanned</dt>
-                  <dd class="font-semibold text-slate-950">{{ syncResult.scanned }}</dd>
+                  <dt class="text-xs font-semibold text-lp-subtle">Scanned</dt>
+                  <dd class="font-black text-lp-ink">{{ syncResult.scanned }}</dd>
                 </div>
                 <div>
-                  <dt class="text-xs text-slate-500">Imported</dt>
-                  <dd class="font-semibold text-slate-950">{{ syncResult.imported }}</dd>
+                  <dt class="text-xs font-semibold text-lp-subtle">Imported</dt>
+                  <dd class="font-black text-lp-ink">{{ syncResult.imported }}</dd>
                 </div>
                 <div>
-                  <dt class="text-xs text-slate-500">Skipped</dt>
-                  <dd class="font-semibold text-slate-950">{{ syncResult.skipped }}</dd>
+                  <dt class="text-xs font-semibold text-lp-subtle">Skipped</dt>
+                  <dd class="font-black text-lp-ink">{{ syncResult.skipped }}</dd>
                 </div>
                 <div>
-                  <dt class="text-xs text-slate-500">Failed</dt>
-                  <dd class="font-semibold text-slate-950">{{ syncResult.failed }}</dd>
+                  <dt class="text-xs font-semibold text-lp-subtle">Failed</dt>
+                  <dd class="font-black text-lp-ink">{{ syncResult.failed }}</dd>
                 </div>
               </dl>
 
-              <ul v-if="syncResult.errors.length" class="mt-3 space-y-2 border-t border-slate-200 pt-3">
+              <ul v-if="syncResult.errors.length" class="mt-3 space-y-2 border-t border-lp-border pt-3">
                 <li v-for="error in syncResult.errors" :key="`${error.filePath}:${error.message}`">
-                  <p class="break-all font-medium text-rose-700">{{ error.filePath }}</p>
-                  <p class="text-rose-700">{{ error.message }}</p>
+                  <p class="break-all font-bold text-lp-danger">{{ error.filePath }}</p>
+                  <p class="text-lp-danger">{{ error.message }}</p>
                 </li>
               </ul>
             </div>
           </div>
-        </section>
+        </AppSurface>
       </aside>
     </div>
 
-    <div v-else class="flex items-center gap-3 text-slate-600">
-      <div class="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-800"></div>
-      <p>Loading...</p>
-    </div>
+    <AppSurface v-else>
+      <LoadingState label="Loading..." />
+    </AppSurface>
   </main>
 </template>

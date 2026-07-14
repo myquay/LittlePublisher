@@ -1,5 +1,6 @@
 using System.Text;
 using AspNet.Security.IndieAuth;
+using LittlePublisher.Web.Authentication;
 using LittlePublisher.Web.Configuration;
 using LittlePublisher.Web.Services.Publishing;
 using LittlePublisher.Web.Services;
@@ -48,6 +49,7 @@ var authenticationBuilder = builder.Services.AddAuthentication(options =>
     options.ClientId = config.IndieAuth.ClientId;
     options.CallbackPath = "/api/auth/indie-callback";
     options.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+    options.Events.OnRemoteFailure = IndieAuthRemoteFailureHandler.HandleAsync;
 });
 
 const string externalMicropubTokenScheme = "ExternalMicropubToken";

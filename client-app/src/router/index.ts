@@ -1,26 +1,28 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
-const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
-  routes: [
-    {
-      path: '/',
-      name: 'home',
-      component: () => import('@/views/HomeView.vue'),
-      meta: { requiresAuth: true },
-    },
-    {
-      path: '/login',
-      name: 'login',
-      component: () => import('@/views/LoginView.vue'),
-      meta: { guest: true },
-    },
-    {
-      path: '/callback',
-      name: 'callback',
-      component: () => import('@/views/CallbackView.vue'),
-    },
+const routes: RouteRecordRaw[] = [
+  {
+    path: '/',
+    name: 'home',
+    component: () => import('@/views/HomeView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/login',
+    name: 'login',
+    component: () => import('@/views/LoginView.vue'),
+    meta: { guest: true },
+  },
+  {
+    path: '/callback',
+    name: 'callback',
+    component: () => import('@/views/CallbackView.vue'),
+  },
+]
+
+if (import.meta.env.DEV) {
+  routes.push(
     {
       path: '/mockups',
       name: 'mockups',
@@ -33,7 +35,12 @@ const router = createRouter({
       component: () => import('@/views/DesignBoardView.vue'),
       meta: { guest: true },
     },
-  ],
+  )
+}
+
+const router = createRouter({
+  history: createWebHistory(import.meta.env.BASE_URL),
+  routes,
 })
 
 // Navigation guard
