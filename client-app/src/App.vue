@@ -84,6 +84,9 @@ function signOut() {
             />
             <span>LittlePublisher</span>
           </RouterLink>
+          <RouterLink to="/webmentions" class="text-sm font-bold text-lp-muted hover:text-lp-ink" active-class="text-lp-info">
+            Webmentions
+          </RouterLink>
         </div>
 
         <div v-if="authStore.isAuthenticated" class="flex items-center gap-3">

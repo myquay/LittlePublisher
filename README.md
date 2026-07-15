@@ -132,6 +132,22 @@ LittlePublisher/
 }
 ```
 
+### Webmention configuration
+
+Webmention support is disabled until the runtime supplies `App__Webmention__Enabled=true`. It uses the same Azure Storage connection string as publishing, and requires both Table and Queue service access.
+
+For the michael-mckenna.com deployment, configure:
+
+```text
+App__Webmention__Enabled=true
+App__Webmention__PublicEndpoint=https://lilpub.michael-mckenna.com/webmention
+App__Webmention__OwnedOrigins__0=https://michael-mckenna.com
+App__Webmention__DeploymentWebhookSecret=<random shared secret of at least 32 characters>
+App__Webmention__QueuePrefix=littlepublisher
+```
+
+Store the same shared secret in the site repository's production environment as `LITTLEPUBLISHER_DEPLOYMENT_SECRET`, and set `LITTLEPUBLISHER_DEPLOYMENT_ENDPOINT` to `https://lilpub.michael-mckenna.com/api/integrations/site-deployments`. Automatic outgoing sending and incoming publication remain disabled; both actions require approval in the authenticated Webmentions screen.
+
 ## License
 
 MIT

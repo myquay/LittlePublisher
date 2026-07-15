@@ -26,6 +26,11 @@ namespace LittlePublisher.Web.Configuration
         public StorageConfiguration Storage { get; set; } = new();
 
         /// <summary>
+        /// Gets or sets Webmention receiving, moderation, and sending configuration.
+        /// </summary>
+        public WebmentionConfiguration Webmention { get; set; } = new();
+
+        /// <summary>
         /// Gets or sets the IndieAuth configuration.
         /// </summary>
         public IndieAuthConfiguration IndieAuth { get; set; } = new();

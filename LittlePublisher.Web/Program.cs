@@ -8,12 +8,25 @@ using LittlePublisher.Web.Services.Storage;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using LittlePublisher.Web.Services.Webmentions;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Configuration
 var config = builder.Configuration.GetSection("App").Get<AppConfiguration>()
     ?? throw new InvalidOperationException("App configuration not found");
+if (config.Webmention.Enabled)
+{
+    if (!Uri.TryCreate(config.Webmention.PublicEndpoint, UriKind.Absolute, out var endpoint) || endpoint.Scheme != Uri.UriSchemeHttps)
+        throw new InvalidOperationException("App:Webmention:PublicEndpoint must be an absolute HTTPS URL when Webmentions are enabled.");
+    if (config.Webmention.OwnedOrigins.Length == 0 || config.Webmention.OwnedOrigins.Any(x => !Uri.TryCreate(x, UriKind.Absolute, out var origin) || origin.Scheme != Uri.UriSchemeHttps))
+        throw new InvalidOperationException("App:Webmention:OwnedOrigins must contain at least one absolute HTTPS origin.");
+    if (config.Webmention.DeploymentWebhookSecret.Length < 32)
+        throw new InvalidOperationException("App:Webmention:DeploymentWebhookSecret must contain at least 32 characters.");
+    if (config.Webmention.AutomaticSend || config.Webmention.AutomaticPublishIncoming)
+        throw new InvalidOperationException("Automatic Webmention sending and incoming publication are not supported.");
+}
 builder.Services.AddSingleton(config);
 
 // Authentication
@@ -108,6 +121,25 @@ builder.Services.AddSingleton<IPublishingService, PublishingService>();
 builder.Services.AddSingleton<MarkdownPublishedItemParser>();
 builder.Services.AddSingleton<IContentImportService, ContentImportService>();
 builder.Services.AddHttpClient();
+builder.Services.AddSingleton<IWebmentionStorage, TableStorageWebmentionStorage>();
+builder.Services.AddSingleton<IWebmentionQueue, AzureWebmentionQueue>();
+builder.Services.AddSingleton<SafeWebFetcher>();
+builder.Services.AddSingleton<ISafeWebFetcher>(services => services.GetRequiredService<SafeWebFetcher>());
+builder.Services.AddSingleton<WebmentionHtml>();
+builder.Services.AddSingleton<IWebmentionExtractor>(services => services.GetRequiredService<WebmentionHtml>());
+builder.Services.AddSingleton<IWebmentionEndpointDiscovery>(services => services.GetRequiredService<WebmentionHtml>());
+builder.Services.AddSingleton<IWebmentionDeploymentService, WebmentionDeploymentService>();
+builder.Services.AddSingleton<IIncomingWebmentionService, IncomingWebmentionService>();
+builder.Services.AddSingleton<IOutgoingWebmentionService, OutgoingWebmentionService>();
+builder.Services.AddSingleton<IWebmentionContentService, WebmentionContentService>();
+builder.Services.AddHostedService<WebmentionWorker>();
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("webmention", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+});
 
 // Controllers
 builder.Services.AddControllers();
@@ -143,6 +175,7 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseRateLimiter();
 
 // CORS
 if (app.Environment.IsDevelopment())

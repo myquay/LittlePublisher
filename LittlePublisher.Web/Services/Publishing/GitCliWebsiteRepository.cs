@@ -7,6 +7,7 @@ namespace LittlePublisher.Web.Services.Publishing;
 public class GitCliWebsiteRepository : IWebsiteRepository
 {
     private readonly GitHubConfiguration _config;
+    private readonly SemaphoreSlim _mutationLock = new(1, 1);
 
     public GitCliWebsiteRepository(AppConfiguration config)
     {
@@ -15,32 +16,67 @@ public class GitCliWebsiteRepository : IWebsiteRepository
 
     public async Task<string> PublishFileAsync(string relativePath, string content, string commitMessage, CancellationToken cancellationToken)
     {
+        var result = await MutateFilesAsync([RepositoryFileMutation.Upsert(relativePath, content)], commitMessage, cancellationToken);
+        return result.CommitSha;
+    }
+
+    public async Task<RepositoryMutationResult> MutateFilesAsync(IReadOnlyList<RepositoryFileMutation> mutations, string commitMessage, CancellationToken cancellationToken)
+    {
         ValidateConfiguration();
-        ValidateRelativePath(relativePath);
+        if (mutations.Count == 0) throw new InvalidOperationException("At least one repository mutation is required.");
+        foreach (var mutation in mutations) ValidateRelativePath(mutation.RelativePath);
 
-        var checkoutPath = CreateCheckoutPath();
-
+        await _mutationLock.WaitAsync(cancellationToken);
         try
         {
-            await CloneAsync(checkoutPath, cancellationToken);
+            Exception? lastError = null;
+            for (var attempt = 1; attempt <= 3; attempt++)
+            {
+                var checkoutPath = CreateCheckoutPath();
+                try
+                {
+                    await CloneAsync(checkoutPath, cancellationToken);
+                    await RunGitAsync(checkoutPath, ["config", "user.name", "LittlePublisher"], cancellationToken);
+                    await RunGitAsync(checkoutPath, ["config", "user.email", "littlepublisher@localhost"], cancellationToken);
 
-            await RunGitAsync(checkoutPath, ["config", "user.name", "LittlePublisher"], cancellationToken);
-            await RunGitAsync(checkoutPath, ["config", "user.email", "littlepublisher@localhost"], cancellationToken);
+                    foreach (var mutation in mutations)
+                    {
+                        var fullPath = Path.Combine(checkoutPath, mutation.RelativePath);
+                        if (mutation.Content is null)
+                        {
+                            if (File.Exists(fullPath)) File.Delete(fullPath);
+                        }
+                        else
+                        {
+                            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+                            if (!File.Exists(fullPath) || !string.Equals(await File.ReadAllTextAsync(fullPath, cancellationToken), mutation.Content, StringComparison.Ordinal))
+                                await File.WriteAllTextAsync(fullPath, mutation.Content, cancellationToken);
+                        }
+                    }
 
-            var fullPath = Path.Combine(checkoutPath, relativePath);
-            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-            await File.WriteAllTextAsync(fullPath, content, cancellationToken);
+                    await RunGitAsync(checkoutPath, ["add", "--all", "--", .. mutations.Select(x => x.RelativePath)], cancellationToken);
+                    var changedOutput = await RunGitAsync(checkoutPath, ["diff", "--cached", "--name-only"], cancellationToken);
+                    var changed = changedOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    if (changed.Length == 0)
+                    {
+                        var current = await RunGitAsync(checkoutPath, ["rev-parse", "HEAD"], cancellationToken);
+                        return new(current, [], false);
+                    }
 
-            await RunGitAsync(checkoutPath, ["add", "--", relativePath], cancellationToken);
-            await RunGitAsync(checkoutPath, ["commit", "-m", commitMessage], cancellationToken);
-            await RunGitAsync(checkoutPath, ["push", "origin", _config.Branch], cancellationToken);
-
-            return await RunGitAsync(checkoutPath, ["rev-parse", "HEAD"], cancellationToken);
+                    await RunGitAsync(checkoutPath, ["commit", "-m", commitMessage], cancellationToken);
+                    await RunGitAsync(checkoutPath, ["push", "origin", _config.Branch], cancellationToken);
+                    var sha = await RunGitAsync(checkoutPath, ["rev-parse", "HEAD"], cancellationToken);
+                    return new(sha, changed, true);
+                }
+                catch (InvalidOperationException ex) when (attempt < 3 && ex.Message.Contains("push", StringComparison.OrdinalIgnoreCase))
+                {
+                    lastError = ex;
+                }
+                finally { DeleteCheckout(checkoutPath); }
+            }
+            throw lastError ?? new InvalidOperationException("Repository mutation failed.");
         }
-        finally
-        {
-            DeleteCheckout(checkoutPath);
-        }
+        finally { _mutationLock.Release(); }
     }
 
     public async Task<IReadOnlyList<WebsiteContentFile>> GetContentFilesAsync(CancellationToken cancellationToken)
