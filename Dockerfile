@@ -36,6 +36,11 @@ RUN dotnet publish LittlePublisher.Web/LittlePublisher.Web.csproj \
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
+# Publishing and the GitHub health check invoke the Git CLI at runtime.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
 LABEL org.opencontainers.image.source="https://github.com/myquay/LittlePublisher" \
       org.opencontainers.image.description="LittlePublisher web application" \
       org.opencontainers.image.licenses="MIT"

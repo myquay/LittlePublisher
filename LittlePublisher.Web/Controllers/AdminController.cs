@@ -62,7 +62,7 @@ public class AdminController : ControllerBase
             await _websiteRepository.CheckConnectionAsync(cancellationToken);
             return Ok(new AdminCheckResponse(true, "GitHub repository is reachable."));
         }
-        catch (Exception ex) when (ex is InvalidOperationException or IOException)
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or System.ComponentModel.Win32Exception)
         {
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new AdminCheckResponse(false, ex.Message));
         }

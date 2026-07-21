@@ -59,6 +59,20 @@ public class AdminControllerTests
     }
 
     [Fact]
+    public async Task CheckGitHub_WhenGitCannotBeStarted_ReturnsServiceUnavailable()
+    {
+        var controller = new AdminController(
+            new StubStorage(),
+            new StubWebsiteRepository { Exception = new System.ComponentModel.Win32Exception("git executable was not found") },
+            new StubContentImportService());
+
+        var result = Assert.IsType<ObjectResult>(await controller.CheckGitHub(CancellationToken.None));
+
+        Assert.Equal(StatusCodes.Status503ServiceUnavailable, result.StatusCode);
+        Assert.Contains("git executable", System.Text.Json.JsonSerializer.Serialize(result.Value));
+    }
+
+    [Fact]
     public async Task ImportRepository_ReturnsImportSummary()
     {
         var controller = new AdminController(new StubStorage(), new StubWebsiteRepository(), new StubContentImportService());
