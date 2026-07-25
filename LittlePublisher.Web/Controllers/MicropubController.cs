@@ -20,17 +20,20 @@ public class MicropubController : ControllerBase
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly AppConfiguration _config;
-    private readonly IPublishingService _publishingService;
     private readonly IPublisherStorage _storage;
+    private readonly IPostStorage _postStorage;
+    private readonly IPostPublicationService _publicationService;
 
     public MicropubController(
         AppConfiguration config,
-        IPublishingService publishingService,
-        IPublisherStorage storage)
+        IPublisherStorage storage,
+        IPostStorage postStorage,
+        IPostPublicationService publicationService)
     {
         _config = config;
-        _publishingService = publishingService;
         _storage = storage;
+        _postStorage = postStorage;
+        _publicationService = publicationService;
     }
 
     [HttpGet]
@@ -54,12 +57,6 @@ public class MicropubController : ControllerBase
             return Forbid();
         }
 
-        if (!HasScope("create"))
-        {
-            Response.Headers.WWWAuthenticate = "Bearer error=\"insufficient_scope\", scope=\"create\"";
-            return StatusCode(StatusCodes.Status403Forbidden, new MicropubError("insufficient_scope", "The create scope is required."));
-        }
-
         MicropubEntry entry;
 
         try
@@ -69,6 +66,31 @@ public class MicropubController : ControllerBase
         catch (InvalidOperationException ex)
         {
             return BadRequest(new MicropubError("invalid_request", ex.Message));
+        }
+
+        var requiredScope = string.Equals(entry.Action, "update", StringComparison.OrdinalIgnoreCase)
+            ? "update"
+            : "create";
+        if (!HasScope(requiredScope))
+        {
+            Response.Headers.WWWAuthenticate = $"Bearer error=\"insufficient_scope\", scope=\"{requiredScope}\"";
+            return StatusCode(
+                StatusCodes.Status403Forbidden,
+                new MicropubError("insufficient_scope", $"The {requiredScope} scope is required."));
+        }
+
+        if (string.Equals(entry.Action, "update", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                return await UpdateAsync(entry, cancellationToken);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or Azure.RequestFailedException or IOException)
+            {
+                return StatusCode(
+                    StatusCodes.Status503ServiceUnavailable,
+                    new MicropubError("temporarily_unavailable", ex.Message));
+            }
         }
 
         if (!string.Equals(entry.Type, "entry", StringComparison.OrdinalIgnoreCase))
@@ -81,47 +103,42 @@ public class MicropubController : ControllerBase
             return BadRequest(new MicropubError("invalid_request", "A Micropub entry requires content or name."));
         }
 
-        var publishRequest = new PublishCreateRequest(
-            Name: entry.Name,
-            Content: entry.Content ?? entry.Name ?? string.Empty,
-            Summary: entry.Summary,
-            Categories: entry.Categories,
-            PublishedUtc: entry.Published ?? DateTimeOffset.UtcNow,
-            Slug: PublishingService.BuildSlug(entry.Name, entry.Content ?? entry.Name ?? string.Empty));
-        var requestJson = JsonSerializer.Serialize(entry, JsonOptions);
-
+        var content = entry.Content ?? entry.Name ?? string.Empty;
         PublishJobRecord? job = null;
-        PublishCreateResult publishResult;
+        PostRecord? post = null;
 
         try
         {
+            post = await _postStorage.CreatePostAsync(
+                new NewPost(
+                    Title: entry.Name,
+                    Content: content,
+                    Summary: entry.Summary,
+                    Categories: entry.Categories,
+                    Slug: PublishingService.BuildSlug(entry.Name, content),
+                    PostType: string.IsNullOrWhiteSpace(entry.Name) ? "note" : "article",
+                    RequestedPublishedUtc: entry.Published),
+                cancellationToken);
+
             job = await _storage.CreatePublishJobAsync(
                 new NewPublishJob(
                     UserMe: GetAuthenticatedMe()!,
                     ClientId: User.FindFirst("client_id")?.Value,
-                    Action: "create",
-                    RequestJson: requestJson),
+                    Action: string.Equals(entry.PostStatus, "draft", StringComparison.OrdinalIgnoreCase)
+                        ? "create-draft"
+                        : "publish",
+                    RequestJson: JsonSerializer.Serialize(
+                        new { postId = post.Id, postStatus = entry.PostStatus ?? "published" },
+                        JsonOptions)),
                 cancellationToken);
 
-            publishResult = await _publishingService.PublishCreateAsync(publishRequest, cancellationToken);
+            if (!string.Equals(entry.PostStatus, "draft", StringComparison.OrdinalIgnoreCase))
+            {
+                post = await _publicationService.PublishAsync(post.Id, cancellationToken);
+            }
 
-            var propertiesJson = JsonSerializer.Serialize(
-                ToSourceProperties(entry, publishResult.Url, publishRequest.PublishedUtc),
-                JsonOptions);
-
-            await _storage.SavePublishedItemAsync(
-                new NewPublishedItem(
-                    Url: publishResult.Url,
-                    Title: entry.Name,
-                    Content: publishRequest.Content,
-                    Categories: entry.Categories,
-                    PublishedUtc: publishRequest.PublishedUtc,
-                    FilePath: publishResult.FilePath,
-                    CommitSha: publishResult.CommitSha,
-                    PropertiesJson: propertiesJson),
-                cancellationToken);
-
-            await _storage.CompletePublishJobAsync(job.Id, publishResult.Url, cancellationToken);
+            var location = post.PublishedUrl ?? BuildManagementUrl(post.Id);
+            await _storage.CompletePublishJobAsync(job.Id, location, cancellationToken);
         }
         catch (Exception ex) when (ex is InvalidOperationException or Azure.RequestFailedException or IOException)
         {
@@ -133,9 +150,54 @@ public class MicropubController : ControllerBase
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new MicropubError("temporarily_unavailable", ex.Message));
         }
 
-        Response.Headers.Location = publishResult.Url;
+        var resultUrl = post!.PublishedUrl ?? BuildManagementUrl(post.Id);
+        Response.Headers.Location = resultUrl;
 
-        return Created(publishResult.Url, new { url = publishResult.Url });
+        return Created(resultUrl, new { url = resultUrl });
+    }
+
+    private async Task<IActionResult> UpdateAsync(MicropubEntry entry, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(entry.Url))
+        {
+            return BadRequest(new MicropubError("invalid_request", "An update requires a url."));
+        }
+
+        var post = await ResolvePostAsync(entry.Url, cancellationToken);
+        if (post is null)
+        {
+            return NotFound(new MicropubError("not_found", "The requested post was not found."));
+        }
+
+        if (string.Equals(entry.PostStatus, "draft", StringComparison.OrdinalIgnoreCase) &&
+            post.PublishedRevision is not null)
+        {
+            return BadRequest(new MicropubError("invalid_request", "Unpublishing an existing post is not supported."));
+        }
+
+        var authoringProperties = new[] { "name", "content", "summary", "category", "published" };
+        if (authoringProperties.Any(entry.ProvidedProperties.Contains))
+        {
+            post = await _postStorage.UpdatePostAsync(
+                post.Id,
+                new PostUpdate(
+                    Title: entry.ProvidedProperties.Contains("name") ? entry.Name : post.Title,
+                    Content: entry.ProvidedProperties.Contains("content") ? entry.Content ?? string.Empty : post.Content,
+                    Summary: entry.ProvidedProperties.Contains("summary") ? entry.Summary : post.Summary,
+                    Categories: entry.ProvidedProperties.Contains("category") ? entry.Categories : post.Categories,
+                    Slug: post.Slug,
+                    PostType: post.PostType,
+                    RequestedPublishedUtc: entry.ProvidedProperties.Contains("published") ? entry.Published : post.RequestedPublishedUtc),
+                post.ETag,
+                cancellationToken);
+        }
+
+        if (string.Equals(entry.PostStatus, "published", StringComparison.OrdinalIgnoreCase))
+        {
+            await _publicationService.PublishAsync(post.Id, cancellationToken);
+        }
+
+        return Ok();
     }
 
     private async Task<IActionResult> GetSourceAsync(string? url, CancellationToken cancellationToken)
@@ -160,14 +222,16 @@ public class MicropubController : ControllerBase
 
         try
         {
-            var item = await _storage.GetPublishedItemByUrlAsync(url, cancellationToken);
+            var item = await ResolvePostAsync(url, cancellationToken);
 
             if (item is null)
             {
                 return NotFound(new MicropubError("not_found", "The requested source item was not found."));
             }
 
-            return Content(item.PropertiesJson, "application/json");
+            var sourceUrl = item.PublishedUrl ?? BuildManagementUrl(item.Id);
+            var json = JsonSerializer.Serialize(ToSourceProperties(item, sourceUrl), JsonOptions);
+            return Content(json, "application/json");
         }
         catch (Exception ex) when (ex is InvalidOperationException or Azure.RequestFailedException)
         {
@@ -214,8 +278,11 @@ public class MicropubController : ControllerBase
         if (Request.HasFormContentType)
         {
             var form = await Request.ReadFormAsync(cancellationToken);
+            var provided = form.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             return new MicropubEntry(
+                Action: form["action"].FirstOrDefault(),
+                Url: form["url"].FirstOrDefault(),
                 Type: StripHPrefix(form["h"].FirstOrDefault()),
                 Name: form["name"].FirstOrDefault(),
                 Content: form["content"].FirstOrDefault(),
@@ -224,49 +291,65 @@ public class MicropubController : ControllerBase
                     .Where(value => !string.IsNullOrWhiteSpace(value))
                     .Select(value => value!)
                     .ToArray(),
-                Published: ParsePublished(form["published"].FirstOrDefault()));
+                Published: ParsePublished(form["published"].FirstOrDefault()),
+                PostStatus: form["post-status"].FirstOrDefault(),
+                ProvidedProperties: provided);
         }
 
         if (Request.ContentType?.Contains("json", StringComparison.OrdinalIgnoreCase) == true)
         {
             using var document = await JsonDocument.ParseAsync(Request.Body, cancellationToken: cancellationToken);
             var root = document.RootElement;
-            var properties = root.TryGetProperty("properties", out var props) ? props : default;
+            var action = ReadFirstString(root, "action");
+            var propertyName = string.Equals(action, "update", StringComparison.OrdinalIgnoreCase) ? "replace" : "properties";
+            var properties = root.TryGetProperty(propertyName, out var props) ? props : default;
+            var provided = properties.ValueKind == JsonValueKind.Object
+                ? properties.EnumerateObject().Select(property => property.Name).ToHashSet(StringComparer.OrdinalIgnoreCase)
+                : [];
 
             return new MicropubEntry(
+                Action: action,
+                Url: ReadFirstString(root, "url"),
                 Type: StripHPrefix(ReadFirstString(root, "type")),
                 Name: ReadFirstPropertyString(properties, "name"),
                 Content: ReadContentProperty(properties),
                 Summary: ReadFirstPropertyString(properties, "summary"),
                 Categories: ReadPropertyStrings(properties, "category"),
-                Published: ParsePublished(ReadFirstPropertyString(properties, "published")));
+                Published: ParsePublished(ReadFirstPropertyString(properties, "published")),
+                PostStatus: ReadFirstPropertyString(properties, "post-status"),
+                ProvidedProperties: provided);
         }
 
         throw new InvalidOperationException("Micropub requests must be form-encoded or JSON.");
     }
 
-    private Dictionary<string, object> ToSourceProperties(MicropubEntry entry, string url, DateTimeOffset publishedUtc)
+    private Dictionary<string, object> ToSourceProperties(PostRecord post, string url)
     {
         var properties = new Dictionary<string, object>
         {
-            ["content"] = new[] { entry.Content ?? entry.Name ?? string.Empty },
-            ["published"] = new[] { publishedUtc.ToString("O") },
-            ["url"] = new[] { url }
+            ["content"] = new[] { post.Content },
+            ["url"] = new[] { url },
+            ["post-status"] = new[] { post.PublishedRevision is null ? "draft" : "published" }
         };
 
-        if (!string.IsNullOrWhiteSpace(entry.Name))
+        if (post.PublishedUtc is { } publishedUtc)
         {
-            properties["name"] = new[] { entry.Name };
+            properties["published"] = new[] { publishedUtc.ToString("O") };
         }
 
-        if (!string.IsNullOrWhiteSpace(entry.Summary))
+        if (!string.IsNullOrWhiteSpace(post.Title))
         {
-            properties["summary"] = new[] { entry.Summary };
+            properties["name"] = new[] { post.Title };
         }
 
-        if (entry.Categories.Count > 0)
+        if (!string.IsNullOrWhiteSpace(post.Summary))
         {
-            properties["category"] = entry.Categories;
+            properties["summary"] = new[] { post.Summary };
+        }
+
+        if (post.Categories.Count > 0)
+        {
+            properties["category"] = post.Categories;
         }
 
         return new Dictionary<string, object>
@@ -274,6 +357,19 @@ public class MicropubController : ControllerBase
             ["type"] = new[] { "h-entry" },
             ["properties"] = properties
         };
+    }
+
+    private string BuildManagementUrl(string postId) => $"{_config.Host.TrimEnd('/')}/micropub/posts/{postId}";
+
+    private async Task<PostRecord?> ResolvePostAsync(string url, CancellationToken cancellationToken)
+    {
+        var managementPrefix = $"{_config.Host.TrimEnd('/')}/micropub/posts/";
+        if (url.StartsWith(managementPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return await _postStorage.GetPostAsync(url[managementPrefix.Length..].Trim('/'), cancellationToken);
+        }
+
+        return await _postStorage.GetPostByUrlAsync(url, cancellationToken);
     }
 
     private bool IsConfiguredUser()
@@ -386,12 +482,16 @@ public class MicropubController : ControllerBase
     }
 
     private record MicropubEntry(
+        string? Action,
+        string? Url,
         string Type,
         string? Name,
         string? Content,
         string? Summary,
         IReadOnlyList<string> Categories,
-        DateTimeOffset? Published);
+        DateTimeOffset? Published,
+        string? PostStatus,
+        IReadOnlySet<string> ProvidedProperties);
 
     private record MicropubError(
         [property: System.Text.Json.Serialization.JsonPropertyName("error")] string Error,

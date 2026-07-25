@@ -9,7 +9,10 @@ public record ImportRepositoryResult(
     int Imported,
     int Skipped,
     int Failed,
-    IReadOnlyList<ImportRepositoryError> Errors);
+    IReadOnlyList<ImportRepositoryError> Errors,
+    int Ambiguous = 0,
+    int DraftsInRepository = 0,
+    IReadOnlyList<string>? DraftFiles = null);
 
 public record ImportRepositoryError(
     string FilePath,

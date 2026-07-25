@@ -114,10 +114,13 @@ builder.Services.AddAuthorization(options =>
 
 // Services
 builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
-builder.Services.AddSingleton<IPublisherStorage, TableStoragePublisherStorage>();
+builder.Services.AddSingleton<TableStoragePublisherStorage>();
+builder.Services.AddSingleton<IPublisherStorage>(services => services.GetRequiredService<TableStoragePublisherStorage>());
+builder.Services.AddSingleton<IPostStorage>(services => services.GetRequiredService<TableStoragePublisherStorage>());
 builder.Services.AddSingleton<IContentGenerator, MarkdownContentGenerator>();
 builder.Services.AddSingleton<IWebsiteRepository, GitCliWebsiteRepository>();
 builder.Services.AddSingleton<IPublishingService, PublishingService>();
+builder.Services.AddSingleton<IPostPublicationService, PostPublicationService>();
 builder.Services.AddSingleton<MarkdownPublishedItemParser>();
 builder.Services.AddSingleton<IContentImportService, ContentImportService>();
 builder.Services.AddHttpClient();
@@ -146,11 +149,16 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
 // CORS
+var configuredCorsOrigins = CorsConfiguration.GetAllowedOrigins(config);
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("Development", policy =>
     {
-        policy.WithOrigins("http://localhost:5173", "https://localhost:5001")
+        policy.WithOrigins(
+                  configuredCorsOrigins
+                      .Concat(["http://localhost:5173", "https://localhost:5001"])
+                      .Distinct(StringComparer.OrdinalIgnoreCase)
+                      .ToArray())
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
@@ -158,7 +166,7 @@ builder.Services.AddCors(options =>
 
     options.AddPolicy("Production", policy =>
     {
-        policy.WithOrigins(config.Host)
+        policy.WithOrigins(configuredCorsOrigins)
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();

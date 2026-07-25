@@ -12,31 +12,8 @@ public record PublishJobRecord(
     DateTimeOffset CreatedUtc,
     DateTimeOffset UpdatedUtc);
 
-public record PublishedItemRecord(
-    string Id,
-    string Url,
-    string? Title,
-    string Content,
-    IReadOnlyList<string> Categories,
-    DateTimeOffset PublishedUtc,
-    string? FilePath,
-    string? CommitSha,
-    string PropertiesJson,
-    bool Draft = false);
-
 public record NewPublishJob(
     string UserMe,
     string? ClientId,
     string Action,
     string RequestJson);
-
-public record NewPublishedItem(
-    string Url,
-    string? Title,
-    string Content,
-    IReadOnlyList<string> Categories,
-    DateTimeOffset PublishedUtc,
-    string? FilePath,
-    string? CommitSha,
-    string PropertiesJson,
-    bool Draft = false);

@@ -1,15 +1,16 @@
-using System.Security.Cryptography;
-using System.Text;
 using Azure;
 using Azure.Data.Tables;
 using LittlePublisher.Web.Configuration;
 
 namespace LittlePublisher.Web.Services.Storage;
 
-public class TableStoragePublisherStorage : IPublisherStorage
+public class TableStoragePublisherStorage : IPublisherStorage, IPostStorage
 {
+    private const string SitePartition = "site";
+    private const int ContentChunkCharacters = 24_000;
+    private const int MaximumContentCharacters = 1_000_000;
     private readonly TableClient? _jobs;
-    private readonly TableClient? _items;
+    private readonly TableClient? _posts;
     private readonly SemaphoreSlim _initializeLock = new(1, 1);
     private bool _initialized;
 
@@ -22,7 +23,201 @@ public class TableStoragePublisherStorage : IPublisherStorage
 
         var prefix = NormalizeTablePrefix(config.Storage.TablePrefix);
         _jobs = new TableClient(config.Storage.ConnectionString, $"{prefix}PublishJobs");
-        _items = new TableClient(config.Storage.ConnectionString, $"{prefix}PublishedItems");
+        _posts = new TableClient(config.Storage.ConnectionString, $"{prefix}Posts");
+    }
+
+    public async Task<PostRecord> CreatePostAsync(NewPost post, CancellationToken cancellationToken)
+    {
+        await EnsureTablesAsync(cancellationToken);
+        ValidateContent(post.Content);
+
+        var now = DateTimeOffset.UtcNow;
+        var id = Guid.NewGuid().ToString("N");
+        var entity = new PostEntity
+        {
+            PartitionKey = SitePartition,
+            RowKey = PostRowKey(id),
+            Id = id,
+            Title = post.Title,
+            Summary = post.Summary,
+            CategoriesJson = System.Text.Json.JsonSerializer.Serialize(post.Categories),
+            Slug = post.Slug,
+            PostType = post.PostType,
+            State = PostStates.Draft,
+            WorkingRevision = 1,
+            RequestedPublishedUtc = post.RequestedPublishedUtc,
+            CreatedUtc = now,
+            UpdatedUtc = now
+        };
+
+        await SubmitRevisionAsync(entity, post.Content, addPost: true, ETag.All, cancellationToken);
+        return (await GetPostAsync(id, cancellationToken))!;
+    }
+
+    public async Task<PostRecord> UpdatePostAsync(string postId, PostUpdate update, string expectedETag, CancellationToken cancellationToken)
+    {
+        await EnsureTablesAsync(cancellationToken);
+        ValidateContent(update.Content);
+
+        var entity = await GetPostEntityAsync(postId, cancellationToken);
+        entity.Title = update.Title;
+        entity.Summary = update.Summary;
+        entity.CategoriesJson = System.Text.Json.JsonSerializer.Serialize(update.Categories);
+        entity.Slug = update.Slug;
+        entity.PostType = update.PostType;
+        entity.RequestedPublishedUtc = update.RequestedPublishedUtc;
+        entity.WorkingRevision++;
+        entity.State = entity.PublishedRevision is null ? PostStates.Draft : PostStates.Published;
+        entity.LastPublishError = null;
+        entity.UpdatedUtc = DateTimeOffset.UtcNow;
+
+        await SubmitRevisionAsync(entity, update.Content, addPost: false, new ETag(expectedETag), cancellationToken);
+        return (await GetPostAsync(postId, cancellationToken))!;
+    }
+
+    public async Task<PostRecord?> GetPostAsync(string postId, CancellationToken cancellationToken)
+    {
+        await EnsureTablesAsync(cancellationToken);
+        var response = await Posts.GetEntityIfExistsAsync<PostEntity>(
+            SitePartition,
+            PostRowKey(postId),
+            cancellationToken: cancellationToken);
+
+        if (!response.HasValue)
+        {
+            return null;
+        }
+
+        var entity = response.Value!;
+        var content = await ReadRevisionContentAsync(postId, entity.WorkingRevision, cancellationToken);
+        return entity.ToRecord(content);
+    }
+
+    public async Task<PostRecord?> GetPostByUrlAsync(string url, CancellationToken cancellationToken)
+    {
+        var entity = (await QueryPostEntitiesAsync(cancellationToken))
+            .FirstOrDefault(candidate => string.Equals(candidate.PublishedUrl, url, StringComparison.OrdinalIgnoreCase));
+        return entity is null
+            ? null
+            : entity.ToRecord(await ReadRevisionContentAsync(entity.Id, entity.WorkingRevision, cancellationToken));
+    }
+
+    public async Task<PostRecord?> GetPostByRepositoryPathAsync(string repositoryPath, CancellationToken cancellationToken)
+    {
+        var entity = (await QueryPostEntitiesAsync(cancellationToken))
+            .FirstOrDefault(candidate =>
+                string.Equals(candidate.SourceRepositoryPath, repositoryPath, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(candidate.FilePath, repositoryPath, StringComparison.OrdinalIgnoreCase));
+        return entity is null
+            ? null
+            : entity.ToRecord(await ReadRevisionContentAsync(entity.Id, entity.WorkingRevision, cancellationToken));
+    }
+
+    public async Task<IReadOnlyList<PostRecord>> GetRecentPostsAsync(int take, CancellationToken cancellationToken)
+    {
+        var entities = (await QueryPostEntitiesAsync(cancellationToken))
+            .OrderByDescending(entity => entity.UpdatedUtc)
+            .Take(NormalizeTake(take))
+            .ToArray();
+        var records = new List<PostRecord>(entities.Length);
+
+        foreach (var entity in entities)
+        {
+            records.Add(entity.ToRecord(await ReadRevisionContentAsync(entity.Id, entity.WorkingRevision, cancellationToken)));
+        }
+
+        return records;
+    }
+
+    public async Task<PostRecord> MarkPublishingAsync(string postId, int revision, string expectedETag, CancellationToken cancellationToken)
+    {
+        var entity = await GetPostEntityAsync(postId, cancellationToken);
+        if (entity.WorkingRevision != revision)
+        {
+            throw new InvalidOperationException("The post changed before publication started.");
+        }
+
+        entity.State = PostStates.Publishing;
+        entity.LastPublishError = null;
+        entity.UpdatedUtc = DateTimeOffset.UtcNow;
+        await Posts.UpdateEntityAsync(entity, new ETag(expectedETag), TableUpdateMode.Replace, cancellationToken);
+        return (await GetPostAsync(postId, cancellationToken))!;
+    }
+
+    public async Task<PostRecord> MarkPublishedAsync(
+        string postId,
+        int revision,
+        string publishedUrl,
+        string filePath,
+        string commitSha,
+        DateTimeOffset publishedUtc,
+        CancellationToken cancellationToken)
+    {
+        var entity = await GetPostEntityAsync(postId, cancellationToken);
+        entity.State = PostStates.Published;
+        entity.PublishedRevision = revision;
+        entity.PublishedUrl = publishedUrl;
+        entity.FilePath = filePath;
+        entity.CommitSha = commitSha;
+        entity.PublishedUtc = publishedUtc;
+        entity.LastPublishError = null;
+        entity.UpdatedUtc = DateTimeOffset.UtcNow;
+        await Posts.UpdateEntityAsync(entity, entity.ETag, TableUpdateMode.Replace, cancellationToken);
+        return (await GetPostAsync(postId, cancellationToken))!;
+    }
+
+    public async Task<PostRecord> MarkPublishFailedAsync(string postId, int revision, string error, CancellationToken cancellationToken)
+    {
+        var entity = await GetPostEntityAsync(postId, cancellationToken);
+        if (entity.WorkingRevision == revision)
+        {
+            entity.State = PostStates.PublishFailed;
+            entity.LastPublishError = error;
+            entity.UpdatedUtc = DateTimeOffset.UtcNow;
+            await Posts.UpdateEntityAsync(entity, entity.ETag, TableUpdateMode.Replace, cancellationToken);
+        }
+
+        return (await GetPostAsync(postId, cancellationToken))!;
+    }
+
+    public async Task<(PostRecord Post, bool Created)> ImportPostAsync(ImportedPost post, bool overwrite, CancellationToken cancellationToken)
+    {
+        var existing = await GetPostByRepositoryPathAsync(post.RepositoryPath, cancellationToken) ??
+            await GetPostByUrlAsync(post.PublishedUrl, cancellationToken);
+
+        if (existing is not null && !overwrite)
+        {
+            return (existing, false);
+        }
+
+        PostRecord record;
+        if (existing is null)
+        {
+            record = await CreatePostAsync(
+                new NewPost(post.Title, post.Content, post.Summary, post.Categories, post.Slug, post.PostType, post.PublishedUtc),
+                cancellationToken);
+        }
+        else
+        {
+            record = await UpdatePostAsync(
+                existing.Id,
+                new PostUpdate(post.Title, post.Content, post.Summary, post.Categories, post.Slug, post.PostType, post.PublishedUtc),
+                existing.ETag,
+                cancellationToken);
+        }
+
+        var entity = await GetPostEntityAsync(record.Id, cancellationToken);
+        entity.SourceRepositoryPath = post.RepositoryPath;
+        entity.SourceCommitSha = post.CommitSha;
+        entity.FilePath = post.Draft ? null : post.RepositoryPath;
+        entity.CommitSha = post.Draft ? null : post.CommitSha;
+        entity.PublishedUrl = post.Draft ? null : post.PublishedUrl;
+        entity.PublishedUtc = post.Draft ? null : post.PublishedUtc;
+        entity.PublishedRevision = post.Draft ? null : entity.WorkingRevision;
+        entity.State = post.Draft ? PostStates.Draft : PostStates.Published;
+        entity.UpdatedUtc = DateTimeOffset.UtcNow;
+        await Posts.UpdateEntityAsync(entity, entity.ETag, TableUpdateMode.Replace, cancellationToken);
+        return ((await GetPostAsync(record.Id, cancellationToken))!, existing is null);
     }
 
     public async Task<PublishJobRecord> CreatePublishJobAsync(NewPublishJob job, CancellationToken cancellationToken)
@@ -76,37 +271,6 @@ public class TableStoragePublisherStorage : IPublisherStorage
         return entity.ToRecord();
     }
 
-    public async Task SavePublishedItemAsync(NewPublishedItem item, CancellationToken cancellationToken)
-    {
-        await EnsureTablesAsync(cancellationToken);
-
-        var entity = new PublishedItemEntity
-        {
-            PartitionKey = "item",
-            RowKey = StableRowKey(item.Url),
-            Url = item.Url,
-            Title = item.Title,
-            Content = item.Content,
-            CategoriesJson = System.Text.Json.JsonSerializer.Serialize(item.Categories),
-            PublishedUtc = item.PublishedUtc,
-            FilePath = item.FilePath,
-            CommitSha = item.CommitSha,
-            PropertiesJson = item.PropertiesJson,
-            Draft = item.Draft
-        };
-
-        await Items.UpsertEntityAsync(entity, TableUpdateMode.Replace, cancellationToken);
-    }
-
-    public async Task<PublishedItemRecord?> GetPublishedItemByUrlAsync(string url, CancellationToken cancellationToken)
-    {
-        await EnsureTablesAsync(cancellationToken);
-
-        var response = await Items.GetEntityIfExistsAsync<PublishedItemEntity>("item", StableRowKey(url), cancellationToken: cancellationToken);
-
-        return response.HasValue ? response.Value!.ToRecord() : null;
-    }
-
     public async Task<IReadOnlyList<PublishJobRecord>> GetRecentPublishJobsAsync(int take, CancellationToken cancellationToken)
     {
         await EnsureTablesAsync(cancellationToken);
@@ -121,25 +285,6 @@ public class TableStoragePublisherStorage : IPublisherStorage
 
         return entities
             .OrderByDescending(entity => entity.CreatedUtc)
-            .Take(NormalizeTake(take))
-            .Select(entity => entity.ToRecord())
-            .ToArray();
-    }
-
-    public async Task<IReadOnlyList<PublishedItemRecord>> GetRecentPublishedItemsAsync(int take, CancellationToken cancellationToken)
-    {
-        await EnsureTablesAsync(cancellationToken);
-
-        var entities = new List<PublishedItemEntity>();
-        await foreach (var entity in Items.QueryAsync<PublishedItemEntity>(
-            filter: "PartitionKey eq 'item'",
-            cancellationToken: cancellationToken))
-        {
-            entities.Add(entity);
-        }
-
-        return entities
-            .OrderByDescending(entity => entity.PublishedUtc)
             .Take(NormalizeTake(take))
             .Select(entity => entity.ToRecord())
             .ToArray();
@@ -174,7 +319,7 @@ public class TableStoragePublisherStorage : IPublisherStorage
             }
 
             await Jobs.CreateIfNotExistsAsync(cancellationToken);
-            await Items.CreateIfNotExistsAsync(cancellationToken);
+            await Posts.CreateIfNotExistsAsync(cancellationToken);
             _initialized = true;
         }
         finally
@@ -197,7 +342,120 @@ public class TableStoragePublisherStorage : IPublisherStorage
 
     private TableClient Jobs => _jobs ?? throw new InvalidOperationException("App:Storage:ConnectionString is not configured.");
 
-    private TableClient Items => _items ?? throw new InvalidOperationException("App:Storage:ConnectionString is not configured.");
+    private TableClient Posts => _posts ?? throw new InvalidOperationException("App:Storage:ConnectionString is not configured.");
+
+    private async Task<PostEntity> GetPostEntityAsync(string postId, CancellationToken cancellationToken)
+    {
+        var response = await Posts.GetEntityIfExistsAsync<PostEntity>(
+            SitePartition,
+            PostRowKey(postId),
+            cancellationToken: cancellationToken);
+        return response.HasValue
+            ? response.Value!
+            : throw new InvalidOperationException($"Post '{postId}' was not found.");
+    }
+
+    private async Task<IReadOnlyList<PostEntity>> QueryPostEntitiesAsync(CancellationToken cancellationToken)
+    {
+        var entities = new List<PostEntity>();
+        await foreach (var entity in Posts.QueryAsync<PostEntity>(
+            filter: "PartitionKey eq 'site' and RowKey ge 'post:' and RowKey lt 'post;'",
+            cancellationToken: cancellationToken))
+        {
+            entities.Add(entity);
+        }
+
+        return entities;
+    }
+
+    private async Task SubmitRevisionAsync(
+        PostEntity post,
+        string content,
+        bool addPost,
+        ETag expectedETag,
+        CancellationToken cancellationToken)
+    {
+        var revision = new PostRevisionEntity
+        {
+            PartitionKey = SitePartition,
+            RowKey = RevisionRowKey(post.Id, post.WorkingRevision),
+            PostId = post.Id,
+            Revision = post.WorkingRevision,
+            Title = post.Title,
+            Summary = post.Summary,
+            CategoriesJson = post.CategoriesJson,
+            Slug = post.Slug,
+            PostType = post.PostType,
+            RequestedPublishedUtc = post.RequestedPublishedUtc,
+            CreatedUtc = post.UpdatedUtc
+        };
+        var actions = new List<TableTransactionAction>
+        {
+            addPost
+                ? new(TableTransactionActionType.Add, post)
+                : new(TableTransactionActionType.UpdateReplace, post, expectedETag),
+            new(TableTransactionActionType.Add, revision)
+        };
+
+        var chunks = ChunkContent(content);
+        for (var index = 0; index < chunks.Count; index++)
+        {
+            actions.Add(new TableTransactionAction(
+                TableTransactionActionType.Add,
+                new PostContentEntity
+                {
+                    PartitionKey = SitePartition,
+                    RowKey = ContentRowKey(post.Id, post.WorkingRevision, index),
+                    Content = chunks[index]
+                }));
+        }
+
+        await Posts.SubmitTransactionAsync(actions, cancellationToken);
+    }
+
+    private async Task<string> ReadRevisionContentAsync(string postId, int revision, CancellationToken cancellationToken)
+    {
+        var prefix = ContentRowPrefix(postId, revision);
+        var upper = $"{prefix};";
+        var chunks = new List<PostContentEntity>();
+        await foreach (var entity in Posts.QueryAsync<PostContentEntity>(
+            filter: $"PartitionKey eq '{SitePartition}' and RowKey ge '{prefix}' and RowKey lt '{upper}'",
+            cancellationToken: cancellationToken))
+        {
+            chunks.Add(entity);
+        }
+
+        return string.Concat(chunks.OrderBy(chunk => chunk.RowKey).Select(chunk => chunk.Content));
+    }
+
+    private static IReadOnlyList<string> ChunkContent(string content)
+    {
+        if (content.Length == 0)
+        {
+            return [string.Empty];
+        }
+
+        var chunks = new List<string>();
+        for (var offset = 0; offset < content.Length; offset += ContentChunkCharacters)
+        {
+            chunks.Add(content.Substring(offset, Math.Min(ContentChunkCharacters, content.Length - offset)));
+        }
+
+        return chunks;
+    }
+
+    private static void ValidateContent(string content)
+    {
+        if (content.Length > MaximumContentCharacters)
+        {
+            throw new InvalidOperationException($"Post content exceeds the {MaximumContentCharacters:N0} character limit.");
+        }
+    }
+
+    private static string PostRowKey(string id) => $"post:{id}";
+    private static string RevisionRowKey(string id, int revision) => $"revision:{id}:{revision:D10}";
+    private static string ContentRowPrefix(string id, int revision) => $"body:{id}:{revision:D10}:";
+    private static string ContentRowKey(string id, int revision, int chunk) => $"{ContentRowPrefix(id, revision)}{chunk:D3}";
 
     private static string NormalizeTablePrefix(string? prefix)
     {
@@ -209,13 +467,6 @@ public class TableStoragePublisherStorage : IPublisherStorage
         }
 
         return normalized.Length <= 40 ? normalized : normalized[..40];
-    }
-
-    private static string StableRowKey(string value)
-    {
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(value));
-
-        return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
     private static int NormalizeTake(int take)
@@ -267,49 +518,65 @@ public class TableStoragePublisherStorage : IPublisherStorage
         }
     }
 
-    private sealed class PublishedItemEntity : ITableEntity
+    private sealed class PostEntity : ITableEntity
     {
         public string PartitionKey { get; set; } = default!;
-
         public string RowKey { get; set; } = default!;
-
         public DateTimeOffset? Timestamp { get; set; }
-
         public ETag ETag { get; set; }
-
-        public string Url { get; set; } = default!;
-
+        public string Id { get; set; } = default!;
         public string? Title { get; set; }
-
-        public string Content { get; set; } = default!;
-
+        public string? Summary { get; set; }
         public string CategoriesJson { get; set; } = "[]";
-
-        public DateTimeOffset PublishedUtc { get; set; }
-
+        public string Slug { get; set; } = default!;
+        public string PostType { get; set; } = default!;
+        public string State { get; set; } = PostStates.Draft;
+        public int WorkingRevision { get; set; }
+        public int? PublishedRevision { get; set; }
+        public DateTimeOffset? RequestedPublishedUtc { get; set; }
+        public DateTimeOffset? PublishedUtc { get; set; }
+        public string? PublishedUrl { get; set; }
         public string? FilePath { get; set; }
-
         public string? CommitSha { get; set; }
+        public string? LastPublishError { get; set; }
+        public string? SourceRepositoryPath { get; set; }
+        public string? SourceCommitSha { get; set; }
+        public DateTimeOffset CreatedUtc { get; set; }
+        public DateTimeOffset UpdatedUtc { get; set; }
 
-        public string PropertiesJson { get; set; } = default!;
-
-        public bool Draft { get; set; }
-
-        public PublishedItemRecord ToRecord()
+        public PostRecord ToRecord(string content)
         {
-            var categories = System.Text.Json.JsonSerializer.Deserialize<IReadOnlyList<string>>(CategoriesJson) ?? Array.Empty<string>();
-
-            return new PublishedItemRecord(
-                Id: RowKey,
-                Url: Url,
-                Title: Title,
-                Content: Content,
-                Categories: categories,
-                PublishedUtc: PublishedUtc,
-                FilePath: FilePath,
-                CommitSha: CommitSha,
-                PropertiesJson: PropertiesJson,
-                Draft: Draft);
+            var categories = System.Text.Json.JsonSerializer.Deserialize<IReadOnlyList<string>>(CategoriesJson) ?? [];
+            return new(
+                Id, Title, content, Summary, categories, Slug, PostType, State, WorkingRevision,
+                PublishedRevision, RequestedPublishedUtc, PublishedUtc, PublishedUrl, FilePath, CommitSha,
+                LastPublishError, SourceRepositoryPath, SourceCommitSha, CreatedUtc, UpdatedUtc, ETag.ToString());
         }
+    }
+
+    private sealed class PostRevisionEntity : ITableEntity
+    {
+        public string PartitionKey { get; set; } = default!;
+        public string RowKey { get; set; } = default!;
+        public DateTimeOffset? Timestamp { get; set; }
+        public ETag ETag { get; set; }
+        public string PostId { get; set; } = default!;
+        public int Revision { get; set; }
+        public string? Title { get; set; }
+        public string? Summary { get; set; }
+        public string CategoriesJson { get; set; } = "[]";
+        public string Slug { get; set; } = default!;
+        public string PostType { get; set; } = default!;
+        public DateTimeOffset? RequestedPublishedUtc { get; set; }
+        public DateTimeOffset CreatedUtc { get; set; }
+    }
+
+    private sealed class PostContentEntity : ITableEntity
+    {
+        public string PartitionKey { get; set; } = default!;
+        public string RowKey { get; set; } = default!;
+        public DateTimeOffset? Timestamp { get; set; }
+        public ETag ETag { get; set; }
+        public string Content { get; set; } = string.Empty;
     }
 }

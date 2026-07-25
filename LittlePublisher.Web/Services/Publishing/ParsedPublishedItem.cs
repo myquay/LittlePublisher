@@ -6,7 +6,7 @@ public record ParsedPublishedItem(
     string Content,
     string? Summary,
     IReadOnlyList<string> Categories,
-    DateTimeOffset PublishedUtc,
+    DateTimeOffset? PublishedUtc,
     string FilePath,
     string? CommitSha,
     bool Draft);

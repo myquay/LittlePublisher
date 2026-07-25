@@ -11,7 +11,8 @@ public class AdminControllerTests
     [Fact]
     public async Task Dashboard_ReturnsRecentJobsAndItems()
     {
-        var controller = new AdminController(new StubStorage(), new StubWebsiteRepository(), new StubContentImportService());
+        var storage = new StubStorage();
+        var controller = new AdminController(storage, storage, new StubWebsiteRepository(), new StubContentImportService());
 
         var result = Assert.IsType<OkObjectResult>(await controller.Dashboard(CancellationToken.None));
         var json = System.Text.Json.JsonSerializer.Serialize(result.Value);
@@ -23,8 +24,10 @@ public class AdminControllerTests
     [Fact]
     public async Task CheckStorage_WhenStorageFails_ReturnsServiceUnavailable()
     {
+        var storage = new StubStorage { HealthException = new InvalidOperationException("storage offline") };
         var controller = new AdminController(
-            new StubStorage { HealthException = new InvalidOperationException("storage offline") },
+            storage,
+            storage,
             new StubWebsiteRepository(),
             new StubContentImportService());
 
@@ -37,7 +40,8 @@ public class AdminControllerTests
     [Fact]
     public async Task CheckGitHub_WhenRepositoryIsReachable_ReturnsOk()
     {
-        var controller = new AdminController(new StubStorage(), new StubWebsiteRepository(), new StubContentImportService());
+        var storage = new StubStorage();
+        var controller = new AdminController(storage, storage, new StubWebsiteRepository(), new StubContentImportService());
 
         var result = Assert.IsType<OkObjectResult>(await controller.CheckGitHub(CancellationToken.None));
 
@@ -47,8 +51,10 @@ public class AdminControllerTests
     [Fact]
     public async Task CheckGitHub_WhenRepositoryFails_ReturnsServiceUnavailable()
     {
+        var storage = new StubStorage();
         var controller = new AdminController(
-            new StubStorage(),
+            storage,
+            storage,
             new StubWebsiteRepository { Exception = new IOException("git failed") },
             new StubContentImportService());
 
@@ -61,8 +67,10 @@ public class AdminControllerTests
     [Fact]
     public async Task CheckGitHub_WhenGitCannotBeStarted_ReturnsServiceUnavailable()
     {
+        var storage = new StubStorage();
         var controller = new AdminController(
-            new StubStorage(),
+            storage,
+            storage,
             new StubWebsiteRepository { Exception = new System.ComponentModel.Win32Exception("git executable was not found") },
             new StubContentImportService());
 
@@ -75,7 +83,8 @@ public class AdminControllerTests
     [Fact]
     public async Task ImportRepository_ReturnsImportSummary()
     {
-        var controller = new AdminController(new StubStorage(), new StubWebsiteRepository(), new StubContentImportService());
+        var storage = new StubStorage();
+        var controller = new AdminController(storage, storage, new StubWebsiteRepository(), new StubContentImportService());
 
         var result = Assert.IsType<OkObjectResult>(await controller.ImportRepository(new ImportRepositoryRequest(), CancellationToken.None));
         var json = System.Text.Json.JsonSerializer.Serialize(result.Value);
@@ -122,7 +131,7 @@ public class AdminControllerTests
         }
     }
 
-    private sealed class StubStorage : IPublisherStorage
+    private sealed class StubStorage : IPublisherStorage, IPostStorage
     {
         public Exception? HealthException { get; init; }
 
@@ -141,24 +150,9 @@ public class AdminControllerTests
             return Task.FromResult(Job());
         }
 
-        public Task SavePublishedItemAsync(NewPublishedItem item, CancellationToken cancellationToken)
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task<PublishedItemRecord?> GetPublishedItemByUrlAsync(string url, CancellationToken cancellationToken)
-        {
-            return Task.FromResult<PublishedItemRecord?>(Item());
-        }
-
         public Task<IReadOnlyList<PublishJobRecord>> GetRecentPublishJobsAsync(int take, CancellationToken cancellationToken)
         {
             return Task.FromResult<IReadOnlyList<PublishJobRecord>>([Job()]);
-        }
-
-        public Task<IReadOnlyList<PublishedItemRecord>> GetRecentPublishedItemsAsync(int take, CancellationToken cancellationToken)
-        {
-            return Task.FromResult<IReadOnlyList<PublishedItemRecord>>([Item()]);
         }
 
         public Task CheckHealthAsync(CancellationToken cancellationToken)
@@ -170,6 +164,21 @@ public class AdminControllerTests
 
             return Task.CompletedTask;
         }
+
+        public Task<IReadOnlyList<PostRecord>> GetRecentPostsAsync(int take, CancellationToken cancellationToken)
+        {
+            return Task.FromResult<IReadOnlyList<PostRecord>>([Post()]);
+        }
+
+        public Task<PostRecord> CreatePostAsync(NewPost post, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<PostRecord> UpdatePostAsync(string postId, PostUpdate update, string expectedETag, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<PostRecord?> GetPostAsync(string postId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<PostRecord?> GetPostByUrlAsync(string url, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<PostRecord?> GetPostByRepositoryPathAsync(string repositoryPath, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<PostRecord> MarkPublishingAsync(string postId, int revision, string expectedETag, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<PostRecord> MarkPublishedAsync(string postId, int revision, string publishedUrl, string filePath, string commitSha, DateTimeOffset publishedUtc, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<PostRecord> MarkPublishFailedAsync(string postId, int revision, string error, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<(PostRecord Post, bool Created)> ImportPostAsync(ImportedPost post, bool overwrite, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         private static PublishJobRecord Job()
         {
@@ -186,18 +195,12 @@ public class AdminControllerTests
                 UpdatedUtc: DateTimeOffset.UtcNow);
         }
 
-        private static PublishedItemRecord Item()
+        private static PostRecord Post()
         {
-            return new PublishedItemRecord(
-                Id: "item-1",
-                Url: "https://example.com/post/",
-                Title: "Post",
-                Content: "Body",
-                Categories: [],
-                PublishedUtc: DateTimeOffset.UtcNow,
-                FilePath: "content/post.md",
-                CommitSha: "abc123",
-                PropertiesJson: "{}");
+            return new PostRecord(
+                "post-1", "Post", "Body", null, [], "post", "article", PostStates.Published,
+                1, 1, null, DateTimeOffset.UtcNow, "https://example.com/post/", "content/post.md", "abc123",
+                null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "etag");
         }
     }
 }

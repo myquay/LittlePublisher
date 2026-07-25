@@ -11,6 +11,11 @@ namespace LittlePublisher.Web.Configuration
         public string Host { get; set; } = default!;
 
         /// <summary>
+        /// Browser origins hosting Micropub editors that may call this instance.
+        /// </summary>
+        public string[] AllowedEditors { get; set; } = [];
+
+        /// <summary>
         /// Gets or sets the website that LittlePublisher will publish to.
         /// </summary>
         public WebsiteConfiguration Website { get; set; } = new();

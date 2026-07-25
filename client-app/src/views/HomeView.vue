@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { AppButton, AppSurface, EmptyState, LoadingState, StatusBadge } from '@/components'
 import { adminService } from '@/services/adminService'
@@ -125,7 +126,7 @@ function readError(error: unknown) {
             <div>
               <p class="lp-kicker">Dashboard</p>
               <h1 class="lp-heading mt-2 text-3xl">Publishing activity</h1>
-              <p class="lp-copy mt-2 text-sm">Recent Micropub jobs and generated Hugo files.</p>
+              <p class="lp-copy mt-2 text-sm">Azure-backed drafts, unpublished changes, and publication activity.</p>
             </div>
             <AppButton variant="secondary" :loading="loadingDashboard" @click="loadDashboard">
               Refresh
@@ -175,28 +176,34 @@ function readError(error: unknown) {
 
         <AppSurface padding="lg">
           <div>
-            <p class="lp-kicker">Archive</p>
-            <h2 class="lp-heading mt-2 text-2xl">Published items</h2>
+            <p class="lp-kicker">Posts</p>
+            <h2 class="lp-heading mt-2 text-2xl">Writing desk</h2>
           </div>
 
           <EmptyState
-            v-if="!loadingDashboard && !dashboard?.items.length"
+            v-if="!loadingDashboard && !dashboard?.posts.length"
             class="mt-5"
-            title="No published items have been recorded."
-            description="Imported or newly generated items will show their URL, file path, and published date here."
+            title="No posts have been stored."
+            description="Create a draft or import the existing repository to establish the Azure post library."
           />
 
-          <div v-else-if="dashboard?.items.length" class="mt-5 divide-y divide-lp-border">
-            <article v-for="item in dashboard?.items" :key="item.id" class="py-4 first:pt-0 last:pb-0">
-              <a :href="item.url" class="break-all text-sm font-black text-lp-ink hover:text-lp-info">
-                {{ item.title || item.url }}
-              </a>
-              <p class="mt-1 break-all text-xs font-semibold text-lp-subtle">{{ item.filePath }}</p>
+          <div v-else-if="dashboard?.posts.length" class="mt-5 divide-y divide-lp-border">
+            <article v-for="post in dashboard?.posts" :key="post.id" class="py-4 first:pt-0 last:pb-0">
+              <RouterLink :to="`/posts/${post.id}`" class="break-all text-sm font-black text-lp-ink hover:text-lp-info">
+                {{ post.title || post.slug || 'Untitled note' }}
+              </RouterLink>
+              <p class="mt-1 break-all text-xs font-semibold text-lp-subtle">{{ post.filePath || 'Azure only' }}</p>
               <div class="mt-2 flex flex-wrap items-center gap-2">
-                <StatusBadge v-if="item.draft" tone="warning">
+                <StatusBadge v-if="post.state === 'publish-failed'" tone="danger">
+                  Publish failed
+                </StatusBadge>
+                <StatusBadge v-else-if="post.hasUnpublishedChanges && post.publishedRevision" tone="warning">
+                  Unpublished changes
+                </StatusBadge>
+                <StatusBadge v-else-if="!post.publishedRevision" tone="warning">
                   Draft
                 </StatusBadge>
-                <p v-else class="text-sm text-lp-muted">{{ formatDate(item.publishedUtc) }}</p>
+                <p v-else-if="post.publishedUtc" class="text-sm text-lp-muted">{{ formatDate(post.publishedUtc) }}</p>
               </div>
             </article>
           </div>
@@ -260,7 +267,7 @@ function readError(error: unknown) {
 
         <AppSurface>
           <p class="lp-kicker">Repository</p>
-          <h2 class="lp-heading mt-2 text-xl">Repository sync</h2>
+          <h2 class="lp-heading mt-2 text-xl">Initial import</h2>
           <div class="mt-5 space-y-3">
             <AppButton full-width variant="secondary" :loading="syncingRepository" @click="syncRepository(true)">
               {{ syncingRepository ? 'Syncing...' : 'Preview sync' }}
@@ -289,6 +296,14 @@ function readError(error: unknown) {
                   <dt class="text-xs font-semibold text-lp-subtle">Failed</dt>
                   <dd class="font-black text-lp-ink">{{ syncResult.failed }}</dd>
                 </div>
+                <div>
+                  <dt class="text-xs font-semibold text-lp-subtle">Ambiguous</dt>
+                  <dd class="font-black text-lp-ink">{{ syncResult.ambiguous }}</dd>
+                </div>
+                <div>
+                  <dt class="text-xs font-semibold text-lp-subtle">Draft files</dt>
+                  <dd class="font-black text-lp-ink">{{ syncResult.draftsInRepository }}</dd>
+                </div>
               </dl>
 
               <ul v-if="syncResult.errors.length" class="mt-3 space-y-2 border-t border-lp-border pt-3">
@@ -297,6 +312,12 @@ function readError(error: unknown) {
                   <p class="text-lp-danger">{{ error.message }}</p>
                 </li>
               </ul>
+              <div v-if="syncResult.draftFiles?.length" class="mt-3 border-t border-lp-border pt-3">
+                <p class="text-xs font-black uppercase tracking-wide text-lp-subtle">Draft files to remove after verification</p>
+                <ul class="mt-2 space-y-1">
+                  <li v-for="file in syncResult.draftFiles" :key="file" class="break-all font-semibold text-lp-ink">{{ file }}</li>
+                </ul>
+              </div>
             </div>
           </div>
         </AppSurface>

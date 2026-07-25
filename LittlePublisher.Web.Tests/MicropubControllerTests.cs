@@ -59,7 +59,7 @@ public class MicropubControllerTests
         Assert.NotNull(storage.SavedItem);
         Assert.Equal("A Good Day", storage.SavedItem!.Title);
         Assert.Contains("indieweb", storage.SavedItem.Categories);
-        Assert.Contains("\"summary\"", storage.SavedItem.PropertiesJson);
+        Assert.Equal("Short version", storage.SavedItem.Summary);
     }
 
     [Fact]
@@ -90,11 +90,62 @@ public class MicropubControllerTests
     {
         var controller = CreateController();
         SetUser(controller, me: "https://example.com/", scopes: "profile");
+        SetJsonBody(controller, """{"type":["h-entry"],"properties":{"content":["Body"]}}""");
 
         var result = Assert.IsType<ObjectResult>(await controller.Post(CancellationToken.None));
 
         Assert.Equal(StatusCodes.Status403Forbidden, result.StatusCode);
         Assert.Equal("Bearer error=\"insufficient_scope\", scope=\"create\"", controller.Response.Headers.WWWAuthenticate);
+    }
+
+    [Fact]
+    public async Task Post_Draft_StoresInAzureWithoutPublishing()
+    {
+        var publishing = new CapturingPublishingService();
+        var storage = new CapturingPublisherStorage();
+        var controller = CreateController(publishing: publishing, storage: storage);
+        SetUser(controller, me: "https://example.com/", scopes: "create");
+        SetJsonBody(controller, """
+            {
+              "type": ["h-entry"],
+              "properties": {
+                "name": ["Still Working"],
+                "content": ["Draft body"],
+                "post-status": ["draft"]
+              }
+            }
+            """);
+
+        var result = Assert.IsType<CreatedResult>(await controller.Post(CancellationToken.None));
+
+        Assert.Equal("https://publisher.example/micropub/posts/post-1", result.Location);
+        Assert.NotNull(storage.SavedItem);
+        Assert.Null(publishing.Request);
+        Assert.Equal("succeeded", storage.CompletedStatus);
+    }
+
+    [Fact]
+    public async Task Post_UpdateCanPublishStoredDraft()
+    {
+        var publishing = new CapturingPublishingService();
+        var storage = new CapturingPublisherStorage();
+        await storage.CreatePostAsync(
+            new NewPost("Stored Draft", "Draft body", null, [], "stored-draft", "article"),
+            CancellationToken.None);
+        var controller = CreateController(publishing: publishing, storage: storage);
+        SetUser(controller, me: "https://example.com/", scopes: "update");
+        SetJsonBody(controller, """
+            {
+              "action": "update",
+              "url": "https://publisher.example/micropub/posts/post-1",
+              "replace": {
+                "post-status": ["published"]
+              }
+            }
+            """);
+
+        Assert.IsType<OkResult>(await controller.Post(CancellationToken.None));
+        Assert.Equal("Draft body", publishing.Request!.Content);
     }
 
     [Fact]
@@ -158,10 +209,13 @@ public class MicropubControllerTests
         IPublishingService? publishing = null,
         IPublisherStorage? storage = null)
     {
+        var publisherStorage = storage ?? new CapturingPublisherStorage();
+        var postStorage = Assert.IsAssignableFrom<IPostStorage>(publisherStorage);
         var controller = new MicropubController(
             config ?? CreateConfig(),
-            publishing ?? new CapturingPublishingService(),
-            storage ?? new CapturingPublisherStorage());
+            publisherStorage,
+            postStorage,
+            new PostPublicationService(postStorage, publishing ?? new CapturingPublishingService(), config ?? CreateConfig()));
 
         controller.ControllerContext = new ControllerContext
         {
@@ -238,11 +292,13 @@ public class MicropubControllerTests
         }
     }
 
-    private sealed class CapturingPublisherStorage : IPublisherStorage
+    private sealed class CapturingPublisherStorage : IPublisherStorage, IPostStorage
     {
         public NewPublishJob? CreatedJob { get; private set; }
 
-        public NewPublishedItem? SavedItem { get; private set; }
+        public NewPost? SavedItem { get; private set; }
+
+        private PostRecord? _post;
 
         public string? CompletedStatus { get; private set; }
 
@@ -270,31 +326,73 @@ public class MicropubControllerTests
             return Task.FromResult(Job("failed", error: error));
         }
 
-        public Task SavePublishedItemAsync(NewPublishedItem item, CancellationToken cancellationToken)
-        {
-            SavedItem = item;
-
-            return Task.CompletedTask;
-        }
-
-        public Task<PublishedItemRecord?> GetPublishedItemByUrlAsync(string url, CancellationToken cancellationToken)
-        {
-            return Task.FromResult<PublishedItemRecord?>(null);
-        }
-
         public Task<IReadOnlyList<PublishJobRecord>> GetRecentPublishJobsAsync(int take, CancellationToken cancellationToken)
         {
             return Task.FromResult<IReadOnlyList<PublishJobRecord>>([]);
         }
 
-        public Task<IReadOnlyList<PublishedItemRecord>> GetRecentPublishedItemsAsync(int take, CancellationToken cancellationToken)
-        {
-            return Task.FromResult<IReadOnlyList<PublishedItemRecord>>([]);
-        }
-
         public Task CheckHealthAsync(CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
+        }
+
+        public Task<PostRecord> CreatePostAsync(NewPost post, CancellationToken cancellationToken)
+        {
+            SavedItem = post;
+            _post = Record(post, PostStates.Draft, null, null, null, null);
+            return Task.FromResult(_post);
+        }
+
+        public Task<PostRecord?> GetPostAsync(string postId, CancellationToken cancellationToken) => Task.FromResult(_post);
+
+        public Task<PostRecord?> GetPostByUrlAsync(string url, CancellationToken cancellationToken) =>
+            Task.FromResult(_post?.PublishedUrl == url ? _post : null);
+
+        public Task<PostRecord> MarkPublishingAsync(string postId, int revision, string expectedETag, CancellationToken cancellationToken)
+        {
+            _post = _post! with { State = PostStates.Publishing, ETag = "publishing-etag" };
+            return Task.FromResult(_post);
+        }
+
+        public Task<PostRecord> MarkPublishedAsync(string postId, int revision, string publishedUrl, string filePath, string commitSha, DateTimeOffset publishedUtc, CancellationToken cancellationToken)
+        {
+            _post = _post! with
+            {
+                State = PostStates.Published,
+                PublishedRevision = revision,
+                PublishedUrl = publishedUrl,
+                FilePath = filePath,
+                CommitSha = commitSha,
+                PublishedUtc = publishedUtc,
+                ETag = "published-etag"
+            };
+            return Task.FromResult(_post);
+        }
+
+        public Task<PostRecord> MarkPublishFailedAsync(string postId, int revision, string error, CancellationToken cancellationToken)
+        {
+            _post = _post! with { State = PostStates.PublishFailed, LastPublishError = error };
+            return Task.FromResult(_post);
+        }
+
+        public Task<PostRecord> UpdatePostAsync(string postId, PostUpdate update, string expectedETag, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<PostRecord?> GetPostByRepositoryPathAsync(string repositoryPath, CancellationToken cancellationToken) => Task.FromResult<PostRecord?>(null);
+        public Task<IReadOnlyList<PostRecord>> GetRecentPostsAsync(int take, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<PostRecord>>(_post is null ? [] : [_post]);
+        public Task<(PostRecord Post, bool Created)> ImportPostAsync(ImportedPost post, bool overwrite, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        private static PostRecord Record(
+            NewPost post,
+            string state,
+            int? publishedRevision,
+            string? url,
+            string? filePath,
+            string? commitSha)
+        {
+            var now = DateTimeOffset.UtcNow;
+            return new PostRecord(
+                "post-1", post.Title, post.Content, post.Summary, post.Categories, post.Slug, post.PostType,
+                state, 1, publishedRevision, post.RequestedPublishedUtc, null, url, filePath, commitSha,
+                null, null, null, now, now, "etag");
         }
 
         private static PublishJobRecord Job(string status, string? publishedUrl = null, string? error = null)

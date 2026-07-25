@@ -87,6 +87,9 @@ function signOut() {
           <RouterLink to="/webmentions" class="text-sm font-bold text-lp-muted hover:text-lp-ink" active-class="text-lp-info">
             Webmentions
           </RouterLink>
+          <RouterLink to="/posts/new" class="text-sm font-bold text-lp-muted hover:text-lp-ink" active-class="text-lp-info">
+            New post
+          </RouterLink>
         </div>
 
         <div v-if="authStore.isAuthenticated" class="flex items-center gap-3">

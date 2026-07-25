@@ -1,19 +1,16 @@
-using System.Text.Json;
 using LittlePublisher.Web.Services.Storage;
 
 namespace LittlePublisher.Web.Services.Publishing;
 
 public class ContentImportService : IContentImportService
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-
     private readonly IWebsiteRepository _websiteRepository;
-    private readonly IPublisherStorage _storage;
+    private readonly IPostStorage _storage;
     private readonly MarkdownPublishedItemParser _parser;
 
     public ContentImportService(
         IWebsiteRepository websiteRepository,
-        IPublisherStorage storage,
+        IPostStorage storage,
         MarkdownPublishedItemParser parser)
     {
         _websiteRepository = websiteRepository;
@@ -27,6 +24,9 @@ public class ContentImportService : IContentImportService
         var imported = 0;
         var skipped = 0;
         var failed = 0;
+        var ambiguous = 0;
+        var draftsInRepository = 0;
+        var draftFiles = new List<string>();
         var errors = new List<ImportRepositoryError>();
 
         foreach (var file in files)
@@ -46,14 +46,34 @@ public class ContentImportService : IContentImportService
             catch (InvalidOperationException ex)
             {
                 failed++;
+                if (ex.Message.Contains("ambiguous", StringComparison.OrdinalIgnoreCase))
+                {
+                    ambiguous++;
+                }
                 errors.Add(new ImportRepositoryError(file.RelativePath, ex.Message));
                 continue;
             }
 
+            if (item.PublishedUtc is { } publishedUtc &&
+                publishedUtc > DateTimeOffset.UtcNow &&
+                !item.Draft)
+            {
+                failed++;
+                ambiguous++;
+                errors.Add(new ImportRepositoryError(file.RelativePath, "Future-dated content requires an explicit scheduling decision."));
+                continue;
+            }
+
+            if (item.Draft)
+            {
+                draftsInRepository++;
+                draftFiles.Add(file.RelativePath);
+            }
+
             if (!request.Overwrite)
             {
-                var existing = await _storage.GetPublishedItemByUrlAsync(item.Url, cancellationToken);
-
+                var existing = await _storage.GetPostByRepositoryPathAsync(item.FilePath, cancellationToken) ??
+                    await _storage.GetPostByUrlAsync(item.Url, cancellationToken);
                 if (existing is not null)
                 {
                     skipped++;
@@ -63,17 +83,20 @@ public class ContentImportService : IContentImportService
 
             if (!request.DryRun)
             {
-                await _storage.SavePublishedItemAsync(
-                    new NewPublishedItem(
-                        Url: item.Url,
+                await _storage.ImportPostAsync(
+                    new ImportedPost(
                         Title: item.Title,
                         Content: item.Content,
+                        Summary: item.Summary,
                         Categories: item.Categories,
+                        Slug: BuildSlug(item),
+                        PostType: InferPostType(item.FilePath, item.Title),
+                        Draft: item.Draft,
                         PublishedUtc: item.PublishedUtc,
-                        FilePath: item.FilePath,
-                        CommitSha: item.CommitSha,
-                        PropertiesJson: BuildPropertiesJson(item),
-                        Draft: item.Draft),
+                        PublishedUrl: item.Url,
+                        RepositoryPath: item.FilePath,
+                        CommitSha: item.CommitSha ?? string.Empty),
+                    request.Overwrite,
                     cancellationToken);
             }
 
@@ -85,7 +108,10 @@ public class ContentImportService : IContentImportService
             Imported: imported,
             Skipped: skipped,
             Failed: failed,
-            Errors: errors);
+            Errors: errors,
+            Ambiguous: ambiguous,
+            DraftsInRepository: draftsInRepository,
+            DraftFiles: draftFiles);
     }
 
     private static bool IsHugoIndexFile(string relativePath)
@@ -93,40 +119,19 @@ public class ContentImportService : IContentImportService
         return string.Equals(Path.GetFileNameWithoutExtension(relativePath), "_index", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string BuildPropertiesJson(ParsedPublishedItem item)
+    private static string BuildSlug(ParsedPublishedItem item)
     {
-        var properties = new Dictionary<string, object>
-        {
-            ["content"] = new[] { item.Content },
-            ["url"] = new[] { item.Url }
-        };
+        var path = new Uri(item.Url).AbsolutePath.Trim('/');
+        var candidate = path.Split('/', StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ??
+            Path.GetFileNameWithoutExtension(item.FilePath);
+        return PublishingService.BuildSlug(candidate, item.Content);
+    }
 
-        if (!item.Draft)
-        {
-            properties["published"] = new[] { item.PublishedUtc.ToString("O") };
-        }
-
-        if (!string.IsNullOrWhiteSpace(item.Title))
-        {
-            properties["name"] = new[] { item.Title };
-        }
-
-        if (!string.IsNullOrWhiteSpace(item.Summary))
-        {
-            properties["summary"] = new[] { item.Summary };
-        }
-
-        if (item.Categories.Count > 0)
-        {
-            properties["category"] = item.Categories;
-        }
-
-        return JsonSerializer.Serialize(
-            new Dictionary<string, object>
-            {
-                ["type"] = new[] { "h-entry" },
-                ["properties"] = properties
-            },
-            JsonOptions);
+    private static string InferPostType(string filePath, string? title)
+    {
+        var normalized = filePath.Replace('\\', '/');
+        return normalized.Contains("/note/", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(title)
+            ? "note"
+            : "article";
     }
 }

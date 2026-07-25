@@ -7,6 +7,27 @@ Self-hostable Micropub API for GitHub websites.
 - **Backend**: ASP.NET Core 10 Web API with JWT authentication
 - **Frontend**: Vue.js 3 SPA with Composition API, Pinia, Vue Router
 - **Authentication**: IndieAuth (via [AspNet.Security.IndieAuth](https://github.com/myquay/IndieAuth))
+- **Authoring storage**: Azure Table Storage is authoritative for post metadata and immutable Markdown revisions
+- **Publication**: GitHub contains only the latest explicitly published revision of each post
+
+## Post storage and publication
+
+Creating or editing a post saves a new revision to the configured Azure Storage account. It does not modify the website repository. The editor's **Publish** action projects the current Azure revision into Hugo Markdown and pushes that file to GitHub. Editing an already-published post therefore leaves the public GitHub revision unchanged until **Republish** is selected.
+
+Post bodies are split into bounded Table Storage entities to avoid Azure's individual string-property limit. The mutable post head uses Azure ETags, and editor updates must supply `If-Match` so concurrent saves cannot silently overwrite each other.
+
+Micropub creation follows the same store-first path. The `post-status=draft` extension creates an Azure-only draft; an omitted status or `post-status=published` publishes it. JSON Micropub updates can replace authoring properties and publish a stored draft with `post-status=published`.
+
+### Initial repository import
+
+Use **Preview sync** on the dashboard before **Import from repository**. The import is idempotent by repository path and public URL and reports:
+
+- published files imported with their existing URL, path, date, and commit SHA;
+- files explicitly marked `draft: true`, which become Azure-only drafts;
+- ambiguous files that have neither a published date nor `draft: true`;
+- future-dated files requiring an explicit scheduling decision.
+
+After a successful import with no unresolved failures, published files remain in GitHub as the public baseline. Any imported draft files are listed by the report and should be removed from GitHub in a separately reviewed cleanup commit. Repository import is a bootstrap/recovery operation; it is not a continuing two-way synchronization mechanism.
 
 ## Prerequisites
 
@@ -119,6 +140,9 @@ LittlePublisher/
 {
   "App": {
     "Host": "https://your-domain.com",
+    "AllowedEditors": [
+      "https://editor.example.com"
+    ],
     "IndieAuth": {
       "ClientId": "https://your-domain.com"
     },
@@ -131,6 +155,12 @@ LittlePublisher/
   }
 }
 ```
+
+`AllowedEditors` contains the exact browser origins of hosted Micropub editors that
+may call the API. Each entry must use HTTP or HTTPS and must not include a path,
+query string, fragment, or trailing slash. Environment variables can populate the
+array with indexed keys such as
+`App__AllowedEditors__0=https://editor.example.com`.
 
 ### Webmention configuration
 

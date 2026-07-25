@@ -11,22 +11,34 @@ export interface PublishJob {
   updatedUtc: string
 }
 
-export interface PublishedItem {
+export interface Post {
   id: string
-  url: string
   title?: string | null
   content: string
+  summary?: string | null
   categories: string[]
-  publishedUtc: string
+  slug: string
+  postType: 'article' | 'note'
+  state: string
+  workingRevision: number
+  publishedRevision?: number | null
+  requestedPublishedUtc?: string | null
+  publishedUtc?: string | null
+  publishedUrl?: string | null
   filePath?: string | null
   commitSha?: string | null
-  propertiesJson: string
-  draft: boolean
+  lastPublishError?: string | null
+  sourceRepositoryPath?: string | null
+  sourceCommitSha?: string | null
+  createdUtc: string
+  updatedUtc: string
+  eTag: string
+  hasUnpublishedChanges: boolean
 }
 
 export interface AdminDashboard {
   jobs: PublishJob[]
-  items: PublishedItem[]
+  posts: Post[]
 }
 
 export interface AdminCheck {
@@ -50,4 +62,17 @@ export interface ImportRepositoryResult {
   skipped: number
   failed: number
   errors: ImportRepositoryError[]
+  ambiguous: number
+  draftsInRepository: number
+  draftFiles: string[]
+}
+
+export interface SavePostRequest {
+  title?: string | null
+  content: string
+  summary?: string | null
+  categories: string[]
+  slug?: string | null
+  postType: 'article' | 'note'
+  requestedPublishedUtc?: string | null
 }

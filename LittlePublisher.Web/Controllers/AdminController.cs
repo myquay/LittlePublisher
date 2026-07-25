@@ -11,15 +11,18 @@ namespace LittlePublisher.Web.Controllers;
 public class AdminController : ControllerBase
 {
     private readonly IPublisherStorage _storage;
+    private readonly IPostStorage _postStorage;
     private readonly IWebsiteRepository _websiteRepository;
     private readonly IContentImportService _contentImportService;
 
     public AdminController(
         IPublisherStorage storage,
+        IPostStorage postStorage,
         IWebsiteRepository websiteRepository,
         IContentImportService contentImportService)
     {
         _storage = storage;
+        _postStorage = postStorage;
         _websiteRepository = websiteRepository;
         _contentImportService = contentImportService;
     }
@@ -30,9 +33,9 @@ public class AdminController : ControllerBase
         try
         {
             var jobs = await _storage.GetRecentPublishJobsAsync(10, cancellationToken);
-            var items = await _storage.GetRecentPublishedItemsAsync(10, cancellationToken);
+            var posts = await _postStorage.GetRecentPostsAsync(50, cancellationToken);
 
-            return Ok(new AdminDashboardResponse(jobs, items));
+            return Ok(new AdminDashboardResponse(jobs, posts));
         }
         catch (Exception ex) when (ex is InvalidOperationException or Azure.RequestFailedException)
         {
@@ -85,7 +88,7 @@ public class AdminController : ControllerBase
 
     private record AdminDashboardResponse(
         IReadOnlyList<PublishJobRecord> Jobs,
-        IReadOnlyList<PublishedItemRecord> Items);
+        IReadOnlyList<PostRecord> Posts);
 
     private record AdminCheckResponse(bool Ok, string Message);
 }

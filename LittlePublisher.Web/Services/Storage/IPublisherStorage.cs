@@ -8,13 +8,7 @@ public interface IPublisherStorage
 
     Task<PublishJobRecord> FailPublishJobAsync(string jobId, string error, CancellationToken cancellationToken);
 
-    Task SavePublishedItemAsync(NewPublishedItem item, CancellationToken cancellationToken);
-
-    Task<PublishedItemRecord?> GetPublishedItemByUrlAsync(string url, CancellationToken cancellationToken);
-
     Task<IReadOnlyList<PublishJobRecord>> GetRecentPublishJobsAsync(int take, CancellationToken cancellationToken);
-
-    Task<IReadOnlyList<PublishedItemRecord>> GetRecentPublishedItemsAsync(int take, CancellationToken cancellationToken);
 
     Task CheckHealthAsync(CancellationToken cancellationToken);
 }

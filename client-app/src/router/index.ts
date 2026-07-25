@@ -15,6 +15,18 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/posts/new',
+    name: 'post-new',
+    component: () => import('@/views/PostEditorView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/posts/:id',
+    name: 'post-edit',
+    component: () => import('@/views/PostEditorView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/login',
     name: 'login',
     component: () => import('@/views/LoginView.vue'),

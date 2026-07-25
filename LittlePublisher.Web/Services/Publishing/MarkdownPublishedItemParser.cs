@@ -31,6 +31,12 @@ public class MarkdownPublishedItemParser
         var frontMatter = ParseFrontMatter(lines[1..closingIndex]);
         var body = BuildBody(lines[(closingIndex + 1)..]);
         var published = ReadPublishedUtc(frontMatter);
+        var explicitlyDraft = ReadBoolean(frontMatter, "draft");
+        if (published is null && explicitlyDraft != true)
+        {
+            throw new InvalidOperationException("Publication status is ambiguous: add a published date or 'draft: true'.");
+        }
+
         var title = ReadString(frontMatter, "title") ?? ReadString(frontMatter, "name");
         var summary = ReadString(frontMatter, "summary") ?? ReadString(frontMatter, "description");
         var categories = ReadStringList(frontMatter, "tags")
@@ -46,10 +52,10 @@ public class MarkdownPublishedItemParser
             Content: body,
             Summary: summary,
             Categories: categories,
-            PublishedUtc: published ?? DateTimeOffset.UnixEpoch,
+            PublishedUtc: published,
             FilePath: file.RelativePath,
             CommitSha: file.CommitSha,
-            Draft: published is null);
+            Draft: explicitlyDraft == true);
     }
 
     private static Dictionary<string, FrontMatterValue> ParseFrontMatter(IReadOnlyList<string> lines)
@@ -220,6 +226,12 @@ public class MarkdownPublishedItemParser
         return string.IsNullOrWhiteSpace(value.Value)
             ? Array.Empty<string>()
             : value.Value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    }
+
+    private static bool? ReadBoolean(IReadOnlyDictionary<string, FrontMatterValue> frontMatter, string key)
+    {
+        var value = ReadString(frontMatter, key);
+        return bool.TryParse(value, out var result) ? result : null;
     }
 
     private static string Unquote(string value)

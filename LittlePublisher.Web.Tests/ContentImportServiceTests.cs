@@ -36,13 +36,13 @@ public class ContentImportServiceTests
         Assert.Equal(1, result.Imported);
         Assert.Empty(result.Errors);
         Assert.NotNull(storage.SavedItem);
-        Assert.Equal("https://example.com/a-fine-little-post/", storage.SavedItem.Url);
+        Assert.Equal("https://example.com/a-fine-little-post/", storage.SavedItem.PublishedUrl);
         Assert.Equal("A Fine Little Post", storage.SavedItem.Title);
         Assert.Equal(["indieweb", "micropub"], storage.SavedItem.Categories);
-        Assert.Equal("blog/content/post/2026/a-fine-little-post.md", storage.SavedItem.FilePath);
+        Assert.Equal("blog/content/post/2026/a-fine-little-post.md", storage.SavedItem.RepositoryPath);
         Assert.Equal("abc123", storage.SavedItem.CommitSha);
         Assert.False(storage.SavedItem.Draft);
-        Assert.Contains("\"summary\":[\"Short summary\"]", storage.SavedItem.PropertiesJson);
+        Assert.Equal("Short summary", storage.SavedItem.Summary);
     }
 
     [Fact]
@@ -67,26 +67,14 @@ public class ContentImportServiceTests
         await service.ImportRepositoryAsync(new ImportRepositoryRequest(), CancellationToken.None);
 
         Assert.NotNull(storage.SavedItem);
-        Assert.Equal("https://example.com/note/2026-05/a-short-note/", storage.SavedItem.Url);
+        Assert.Equal("https://example.com/note/2026-05/a-short-note/", storage.SavedItem.PublishedUrl);
         Assert.Equal("A short note from a Micropub client.", storage.SavedItem.Content);
     }
 
     [Fact]
     public async Task ImportRepositoryAsync_SkipsExistingItemsByDefault()
     {
-        var storage = new CapturingStorage
-        {
-            ExistingItem = new PublishedItemRecord(
-                Id: "existing",
-                Url: "https://example.com/a-fine-little-post/",
-                Title: "Existing",
-                Content: "Existing",
-                Categories: [],
-                PublishedUtc: DateTimeOffset.UtcNow,
-                FilePath: null,
-                CommitSha: null,
-                PropertiesJson: "{}")
-        };
+        var storage = new CapturingStorage { Existing = true };
         var service = CreateService(storage, ArticleFile());
 
         var result = await service.ImportRepositoryAsync(new ImportRepositoryRequest(), CancellationToken.None);
@@ -99,19 +87,7 @@ public class ContentImportServiceTests
     [Fact]
     public async Task ImportRepositoryAsync_OverwriteUpdatesExistingItems()
     {
-        var storage = new CapturingStorage
-        {
-            ExistingItem = new PublishedItemRecord(
-                Id: "existing",
-                Url: "https://example.com/a-fine-little-post/",
-                Title: "Existing",
-                Content: "Existing",
-                Categories: [],
-                PublishedUtc: DateTimeOffset.UtcNow,
-                FilePath: null,
-                CommitSha: null,
-                PropertiesJson: "{}")
-        };
+        var storage = new CapturingStorage { Existing = true };
         var service = CreateService(storage, ArticleFile());
 
         var result = await service.ImportRepositoryAsync(new ImportRepositoryRequest(Overwrite: true), CancellationToken.None);
@@ -180,6 +156,7 @@ public class ContentImportServiceTests
                 Content: """
                     ---
                     title: About
+                    draft: true
                     ---
 
                     About this site.
@@ -192,9 +169,33 @@ public class ContentImportServiceTests
         Assert.Equal(0, result.Failed);
         Assert.NotNull(storage.SavedItem);
         Assert.True(storage.SavedItem.Draft);
-        Assert.Equal("https://example.com/about/", storage.SavedItem.Url);
-        Assert.Equal(DateTimeOffset.UnixEpoch, storage.SavedItem.PublishedUtc);
-        Assert.DoesNotContain("\"published\"", storage.SavedItem.PropertiesJson);
+        Assert.Equal("https://example.com/about/", storage.SavedItem.PublishedUrl);
+        Assert.Null(storage.SavedItem.PublishedUtc);
+    }
+
+    [Fact]
+    public async Task ImportRepositoryAsync_ReportsMissingDateWithoutDraftFlagAsAmbiguous()
+    {
+        var storage = new CapturingStorage();
+        var service = CreateService(
+            storage,
+            new WebsiteContentFile(
+                RelativePath: "blog/content/about.md",
+                Content: """
+                    ---
+                    title: About
+                    ---
+
+                    About this site.
+                    """,
+                CommitSha: "abc123"));
+
+        var result = await service.ImportRepositoryAsync(new ImportRepositoryRequest(), CancellationToken.None);
+
+        Assert.Equal(1, result.Failed);
+        Assert.Equal(1, result.Ambiguous);
+        Assert.Null(storage.SavedItem);
+        Assert.Contains("ambiguous", result.Errors[0].Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -223,20 +224,16 @@ public class ContentImportServiceTests
     }
 
     [Fact]
-    public async Task MarkdownPublishedItemParser_BuildsMicropubCompatibleProperties()
+    public async Task ImportRepositoryAsync_PreservesAuthoringProperties()
     {
         var storage = new CapturingStorage();
         var service = CreateService(storage, ArticleFile());
 
         await service.ImportRepositoryAsync(new ImportRepositoryRequest(), CancellationToken.None);
 
-        using var document = JsonDocument.Parse(storage.SavedItem!.PropertiesJson);
-        var properties = document.RootElement.GetProperty("properties");
-
-        Assert.Equal("h-entry", document.RootElement.GetProperty("type")[0].GetString());
-        Assert.Equal("This is the body.", properties.GetProperty("content")[0].GetString());
-        Assert.Equal("https://example.com/a-fine-little-post/", properties.GetProperty("url")[0].GetString());
-        Assert.Equal("indieweb", properties.GetProperty("category")[0].GetString());
+        Assert.Equal("This is the body.", storage.SavedItem!.Content);
+        Assert.Equal("https://example.com/a-fine-little-post/", storage.SavedItem.PublishedUrl);
+        Assert.Equal("indieweb", storage.SavedItem.Categories[0]);
     }
 
     private static ContentImportService CreateService(CapturingStorage storage, params WebsiteContentFile[] files)
@@ -302,52 +299,38 @@ public class ContentImportServiceTests
         }
     }
 
-    private sealed class CapturingStorage : IPublisherStorage
+    private sealed class CapturingStorage : IPostStorage
     {
-        public PublishedItemRecord? ExistingItem { get; init; }
+        public bool Existing { get; init; }
 
-        public NewPublishedItem? SavedItem { get; private set; }
+        public ImportedPost? SavedItem { get; private set; }
 
-        public Task<PublishJobRecord> CreatePublishJobAsync(NewPublishJob job, CancellationToken cancellationToken)
+        public Task<(PostRecord Post, bool Created)> ImportPostAsync(ImportedPost post, bool overwrite, CancellationToken cancellationToken)
         {
-            throw new NotSupportedException();
+            if (!Existing || overwrite) SavedItem = post;
+            return Task.FromResult((Record(post), !Existing));
         }
 
-        public Task<PublishJobRecord> CompletePublishJobAsync(string jobId, string publishedUrl, CancellationToken cancellationToken)
-        {
-            throw new NotSupportedException();
-        }
+        public Task<PostRecord?> GetPostByRepositoryPathAsync(string repositoryPath, CancellationToken cancellationToken) =>
+            Task.FromResult(Existing ? Record(ArticleImport()) : null);
+        public Task<PostRecord?> GetPostByUrlAsync(string url, CancellationToken cancellationToken) =>
+            Task.FromResult(Existing ? Record(ArticleImport()) : null);
+        public Task<PostRecord> CreatePostAsync(NewPost post, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<PostRecord> UpdatePostAsync(string postId, PostUpdate update, string expectedETag, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<PostRecord?> GetPostAsync(string postId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyList<PostRecord>> GetRecentPostsAsync(int take, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<PostRecord> MarkPublishingAsync(string postId, int revision, string expectedETag, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<PostRecord> MarkPublishedAsync(string postId, int revision, string publishedUrl, string filePath, string commitSha, DateTimeOffset publishedUtc, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<PostRecord> MarkPublishFailedAsync(string postId, int revision, string error, CancellationToken cancellationToken) => throw new NotSupportedException();
 
-        public Task<PublishJobRecord> FailPublishJobAsync(string jobId, string error, CancellationToken cancellationToken)
-        {
-            throw new NotSupportedException();
-        }
+        private static PostRecord Record(ImportedPost post) => new(
+            "post", post.Title, post.Content, post.Summary, post.Categories, post.Slug, post.PostType,
+            post.Draft ? PostStates.Draft : PostStates.Published, 1, post.Draft ? null : 1,
+            post.PublishedUtc, post.PublishedUtc, post.PublishedUrl, post.RepositoryPath, post.CommitSha,
+            null, post.RepositoryPath, post.CommitSha, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "etag");
 
-        public Task SavePublishedItemAsync(NewPublishedItem item, CancellationToken cancellationToken)
-        {
-            SavedItem = item;
-
-            return Task.CompletedTask;
-        }
-
-        public Task<PublishedItemRecord?> GetPublishedItemByUrlAsync(string url, CancellationToken cancellationToken)
-        {
-            return Task.FromResult(ExistingItem);
-        }
-
-        public Task<IReadOnlyList<PublishJobRecord>> GetRecentPublishJobsAsync(int take, CancellationToken cancellationToken)
-        {
-            throw new NotSupportedException();
-        }
-
-        public Task<IReadOnlyList<PublishedItemRecord>> GetRecentPublishedItemsAsync(int take, CancellationToken cancellationToken)
-        {
-            throw new NotSupportedException();
-        }
-
-        public Task CheckHealthAsync(CancellationToken cancellationToken)
-        {
-            throw new NotSupportedException();
-        }
+        private static ImportedPost ArticleImport() => new(
+            "Existing", "Existing", null, [], "existing", "article", false, DateTimeOffset.UtcNow,
+            "https://example.com/a-fine-little-post/", "blog/content/post/2026/a-fine-little-post.md", "commit");
     }
 }
