@@ -161,6 +161,7 @@ builder.Services.AddCors(options =>
                       .ToArray())
               .AllowAnyHeader()
               .AllowAnyMethod()
+              .WithExposedHeaders("Location", "Link", "ETag")
               .AllowCredentials();
     });
 
@@ -169,6 +170,7 @@ builder.Services.AddCors(options =>
         policy.WithOrigins(configuredCorsOrigins)
               .AllowAnyHeader()
               .AllowAnyMethod()
+              .WithExposedHeaders("Location", "Link", "ETag")
               .AllowCredentials();
     });
 });

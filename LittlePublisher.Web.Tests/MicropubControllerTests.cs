@@ -86,6 +86,34 @@ public class MicropubControllerTests
     }
 
     [Fact]
+    public async Task Post_PhotoEntry_PreservesMicropubPropertiesAndPublishesActivity()
+    {
+        var publishing = new CapturingPublishingService();
+        var storage = new CapturingPublisherStorage();
+        var controller = CreateController(publishing: publishing, storage: storage);
+        SetUser(controller, me: "https://example.com/", scopes: "create");
+        SetJsonBody(controller, """
+            {
+              "type": ["h-entry"],
+              "properties": {
+                "post-type": ["photo"],
+                "content": ["A day in the snow"],
+                "photo": ["https://example.com/media/snow.jpg"],
+                "alt": ["A snowboarder in deep snow"],
+                "location": ["Nagano, Japan"]
+              }
+            }
+            """);
+
+        Assert.IsType<CreatedResult>(await controller.Post(CancellationToken.None));
+
+        Assert.Equal("photo", storage.SavedItem!.PostType);
+        Assert.Equal(["https://example.com/media/snow.jpg"], storage.SavedItem.Properties!["photo"]);
+        Assert.Equal("photo", publishing.Request!.PostType);
+        Assert.Equal(["A snowboarder in deep snow"], publishing.Request.Properties!["alt"]);
+    }
+
+    [Fact]
     public async Task Post_WithoutCreateScope_ReturnsInsufficientScope()
     {
         var controller = CreateController();
@@ -146,6 +174,32 @@ public class MicropubControllerTests
 
         Assert.IsType<OkResult>(await controller.Post(CancellationToken.None));
         Assert.Equal("Draft body", publishing.Request!.Content);
+    }
+
+    [Fact]
+    public async Task Post_UpdateSupportsAddAndDeleteOperations()
+    {
+        var storage = new CapturingPublisherStorage();
+        var post = await storage.CreatePostAsync(
+            new NewPost("Stored Draft", "Draft body", "Remove me", ["one"], "stored-draft", "article"),
+            CancellationToken.None);
+        var controller = CreateController(storage: storage);
+        SetUser(controller, me: "https://example.com/", scopes: "update");
+        SetJsonBody(controller, $$"""
+            {
+              "action": "update",
+              "url": "https://publisher.example/micropub/posts/{{post.Id}}",
+              "add": {
+                "category": ["two"]
+              },
+              "delete": ["summary"]
+            }
+            """);
+
+        Assert.IsType<OkResult>(await controller.Post(CancellationToken.None));
+        var updated = await storage.GetPostAsync(post.Id, CancellationToken.None);
+        Assert.Equal(["one", "two"], updated!.Categories);
+        Assert.Null(updated.Summary);
     }
 
     [Fact]
@@ -375,7 +429,34 @@ public class MicropubControllerTests
             return Task.FromResult(_post);
         }
 
-        public Task<PostRecord> UpdatePostAsync(string postId, PostUpdate update, string expectedETag, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<PostRecord> SetDeletedAsync(string postId, bool deleted, CancellationToken cancellationToken)
+        {
+            _post = _post! with
+            {
+                State = deleted ? PostStates.Deleted : _post.PublishedRevision is null ? PostStates.Draft : PostStates.Published,
+                DeletedUtc = deleted ? DateTimeOffset.UtcNow : null
+            };
+            return Task.FromResult(_post);
+        }
+
+        public Task<PostRecord> UpdatePostAsync(string postId, PostUpdate update, string expectedETag, CancellationToken cancellationToken)
+        {
+            _post = _post! with
+            {
+                Title = update.Title,
+                Content = update.Content,
+                Summary = update.Summary,
+                Categories = update.Categories,
+                Slug = update.Slug,
+                PostType = update.PostType,
+                RequestedPublishedUtc = update.RequestedPublishedUtc,
+                Properties = update.Properties,
+                State = PostStates.Draft,
+                WorkingRevision = _post.WorkingRevision + 1,
+                ETag = "updated-etag"
+            };
+            return Task.FromResult(_post);
+        }
         public Task<PostRecord?> GetPostByRepositoryPathAsync(string repositoryPath, CancellationToken cancellationToken) => Task.FromResult<PostRecord?>(null);
         public Task<IReadOnlyList<PostRecord>> GetRecentPostsAsync(int take, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<PostRecord>>(_post is null ? [] : [_post]);
         public Task<(PostRecord Post, bool Created)> ImportPostAsync(ImportedPost post, bool overwrite, CancellationToken cancellationToken) => throw new NotSupportedException();
@@ -392,7 +473,7 @@ public class MicropubControllerTests
             return new PostRecord(
                 "post-1", post.Title, post.Content, post.Summary, post.Categories, post.Slug, post.PostType,
                 state, 1, publishedRevision, post.RequestedPublishedUtc, null, url, filePath, commitSha,
-                null, null, null, now, now, "etag");
+                null, null, null, now, now, "etag", post.Properties);
         }
 
         private static PublishJobRecord Job(string status, string? publishedUrl = null, string? error = null)

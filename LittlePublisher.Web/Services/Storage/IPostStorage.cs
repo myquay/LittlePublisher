@@ -27,5 +27,8 @@ public interface IPostStorage
 
     Task<PostRecord> MarkPublishFailedAsync(string postId, int revision, string error, CancellationToken cancellationToken);
 
+    Task<PostRecord> SetDeletedAsync(string postId, bool deleted, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("This post storage implementation does not support delete and undelete.");
+
     Task<(PostRecord Post, bool Created)> ImportPostAsync(ImportedPost post, bool overwrite, CancellationToken cancellationToken);
 }

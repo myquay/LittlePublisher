@@ -38,15 +38,26 @@ public class MicropubController : ControllerBase
 
     [HttpGet]
     [AllowAnonymous]
-    public async Task<IActionResult> Get([FromQuery] string? q, [FromQuery] string? url, CancellationToken cancellationToken)
+    public async Task<IActionResult> Get(
+        [FromQuery] string? q,
+        [FromQuery] string? url,
+        [FromQuery] string? type,
+        [FromQuery] string? status,
+        [FromQuery] int take,
+        CancellationToken cancellationToken)
     {
         return q switch
         {
             "config" => Ok(GetConfigResponse()),
             "source" => await GetSourceAsync(url, cancellationToken),
+            "posts" => await GetPostsAsync(type, status, take, cancellationToken),
             _ => BadRequest(new MicropubError("invalid_request", "Unsupported Micropub query."))
         };
     }
+
+    [NonAction]
+    public Task<IActionResult> Get(string? q, string? url, CancellationToken cancellationToken) =>
+        Get(q, url, null, null, 50, cancellationToken);
 
     [HttpPost]
     [Authorize(Policy = "MicropubToken")]
@@ -68,15 +79,27 @@ public class MicropubController : ControllerBase
             return BadRequest(new MicropubError("invalid_request", ex.Message));
         }
 
-        var requiredScope = string.Equals(entry.Action, "update", StringComparison.OrdinalIgnoreCase)
-            ? "update"
-            : "create";
+        var requiredScope = entry.Action?.ToLowerInvariant() switch
+        {
+            "update" => "update",
+            "delete" or "undelete" => "delete",
+            _ => "create"
+        };
         if (!HasScope(requiredScope))
         {
             Response.Headers.WWWAuthenticate = $"Bearer error=\"insufficient_scope\", scope=\"{requiredScope}\"";
             return StatusCode(
                 StatusCodes.Status403Forbidden,
                 new MicropubError("insufficient_scope", $"The {requiredScope} scope is required."));
+        }
+
+        if (string.Equals(entry.Action, "delete", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(entry.Action, "undelete", StringComparison.OrdinalIgnoreCase))
+        {
+            return await SetDeletedAsync(
+                entry,
+                deleted: string.Equals(entry.Action, "delete", StringComparison.OrdinalIgnoreCase),
+                cancellationToken);
         }
 
         if (string.Equals(entry.Action, "update", StringComparison.OrdinalIgnoreCase))
@@ -98,7 +121,9 @@ public class MicropubController : ControllerBase
             return BadRequest(new MicropubError("invalid_request", "Only h=entry create requests are supported."));
         }
 
-        if (string.IsNullOrWhiteSpace(entry.Content) && string.IsNullOrWhiteSpace(entry.Name))
+        if (string.IsNullOrWhiteSpace(entry.Content) &&
+            string.IsNullOrWhiteSpace(entry.Name) &&
+            entry.Properties.Count == 0)
         {
             return BadRequest(new MicropubError("invalid_request", "A Micropub entry requires content or name."));
         }
@@ -115,9 +140,10 @@ public class MicropubController : ControllerBase
                     Content: content,
                     Summary: entry.Summary,
                     Categories: entry.Categories,
-                    Slug: PublishingService.BuildSlug(entry.Name, content),
-                    PostType: string.IsNullOrWhiteSpace(entry.Name) ? "note" : "article",
-                    RequestedPublishedUtc: entry.Published),
+                    Slug: PublishingService.BuildSlug(entry.Name, BuildSlugContent(entry, content)),
+                    PostType: ResolvePostType(entry),
+                    RequestedPublishedUtc: entry.Published,
+                    Properties: entry.Properties),
                 cancellationToken);
 
             job = await _storage.CreatePublishJobAsync(
@@ -169,25 +195,52 @@ public class MicropubController : ControllerBase
             return NotFound(new MicropubError("not_found", "The requested post was not found."));
         }
 
-        if (string.Equals(entry.PostStatus, "draft", StringComparison.OrdinalIgnoreCase) &&
-            post.PublishedRevision is not null)
+        var authoringProperties = new[]
         {
-            return BadRequest(new MicropubError("invalid_request", "Unpublishing an existing post is not supported."));
-        }
-
-        var authoringProperties = new[] { "name", "content", "summary", "category", "published" };
-        if (authoringProperties.Any(entry.ProvidedProperties.Contains))
+            "name", "content", "summary", "category", "published", "post-type",
+            "photo", "alt", "location", "in-reply-to", "like-of", "repost-of",
+            "bookmark-of", "url", "feed", "start", "end", "audio", "video"
+        };
+        var changedProperties = entry.ProvidedProperties
+            .Concat(entry.AddProperties.Keys)
+            .Concat(entry.DeleteProperties)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (authoringProperties.Any(changedProperties.Contains))
         {
+            var categories = entry.DeleteProperties.Contains("category")
+                ? Array.Empty<string>()
+                : entry.ProvidedProperties.Contains("category")
+                    ? entry.Categories
+                    : entry.AddProperties.TryGetValue("category", out var addedCategories)
+                        ? post.Categories.Concat(addedCategories).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
+                        : post.Categories;
             post = await _postStorage.UpdatePostAsync(
                 post.Id,
                 new PostUpdate(
-                    Title: entry.ProvidedProperties.Contains("name") ? entry.Name : post.Title,
-                    Content: entry.ProvidedProperties.Contains("content") ? entry.Content ?? string.Empty : post.Content,
-                    Summary: entry.ProvidedProperties.Contains("summary") ? entry.Summary : post.Summary,
-                    Categories: entry.ProvidedProperties.Contains("category") ? entry.Categories : post.Categories,
+                    Title: entry.DeleteProperties.Contains("name")
+                        ? null
+                        : entry.ProvidedProperties.Contains("name") ? entry.Name : post.Title,
+                    Content: entry.DeleteProperties.Contains("content")
+                        ? string.Empty
+                        : entry.ProvidedProperties.Contains("content") ? entry.Content ?? string.Empty : post.Content,
+                    Summary: entry.DeleteProperties.Contains("summary")
+                        ? null
+                        : entry.ProvidedProperties.Contains("summary") ? entry.Summary : post.Summary,
+                    Categories: categories,
                     Slug: post.Slug,
-                    PostType: post.PostType,
-                    RequestedPublishedUtc: entry.ProvidedProperties.Contains("published") ? entry.Published : post.RequestedPublishedUtc),
+                    PostType: changedProperties.Contains("post-type") ||
+                        entry.Properties.Keys.Any(IsRelationshipProperty)
+                        ? ResolvePostType(entry)
+                        : post.PostType,
+                    RequestedPublishedUtc: entry.DeleteProperties.Contains("published")
+                        ? null
+                        : entry.ProvidedProperties.Contains("published") ? entry.Published : post.RequestedPublishedUtc,
+                    Properties: MergeProperties(
+                        post.MicropubProperties,
+                        entry.Properties,
+                        entry.ProvidedProperties,
+                        entry.AddProperties,
+                        entry.DeleteProperties)),
                 post.ETag,
                 cancellationToken);
         }
@@ -198,6 +251,74 @@ public class MicropubController : ControllerBase
         }
 
         return Ok();
+    }
+
+    private async Task<IActionResult> SetDeletedAsync(
+        MicropubEntry entry,
+        bool deleted,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(entry.Url))
+        {
+            return BadRequest(new MicropubError("invalid_request", "A delete or undelete action requires a url."));
+        }
+
+        var post = await ResolvePostAsync(entry.Url, cancellationToken);
+        if (post is null)
+        {
+            return NotFound(new MicropubError("not_found", "The requested post was not found."));
+        }
+
+        if (deleted)
+        {
+            await _publicationService.DeleteAsync(post.Id, cancellationToken);
+        }
+        else
+        {
+            await _publicationService.UndeleteAsync(post.Id, cancellationToken);
+        }
+        return NoContent();
+    }
+
+    private async Task<IActionResult> GetPostsAsync(
+        string? type,
+        string? status,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        if (!await TryAuthenticateMicropubTokenAsync())
+        {
+            return Challenge(_config.ExternalToken.Enabled &&
+                _config.ExternalToken.IsSupportedMode ? [ExternalMicropubTokenScheme] : []);
+        }
+
+        if (!IsConfiguredUser())
+        {
+            return Forbid();
+        }
+
+        var posts = await _postStorage.GetRecentPostsAsync(Math.Clamp(take == 0 ? 50 : take, 1, 50), cancellationToken);
+        var items = posts
+            .Where(post => string.IsNullOrWhiteSpace(type) ||
+                string.Equals(post.PostType, type, StringComparison.OrdinalIgnoreCase))
+            .Where(post => string.IsNullOrWhiteSpace(status) ||
+                string.Equals(post.State, status, StringComparison.OrdinalIgnoreCase) ||
+                status.Equals("published", StringComparison.OrdinalIgnoreCase) && post.PublishedRevision is not null)
+            .Select(post => new
+            {
+                type = new[] { "h-entry" },
+                properties = ToSourceProperties(post, post.PublishedUrl ?? BuildManagementUrl(post.Id))["properties"],
+                postType = post.PostType,
+                state = post.State,
+                managementUrl = BuildManagementUrl(post.Id),
+                publishedUrl = post.PublishedUrl,
+                updated = post.UpdatedUtc,
+                revision = post.WorkingRevision,
+                hasUnpublishedChanges = post.HasUnpublishedChanges
+            })
+            .ToArray();
+
+        return Ok(new { items });
     }
 
     private async Task<IActionResult> GetSourceAsync(string? url, CancellationToken cancellationToken)
@@ -264,11 +385,23 @@ public class MicropubController : ControllerBase
         return new Dictionary<string, object>
         {
             ["micropub"] = $"{host}/micropub",
+            ["media-endpoint"] = $"{host}/micropub/media",
             ["syndicate-to"] = Array.Empty<object>(),
+            ["extensions"] = new[] { "q=posts", "post-status", "delete", "undelete" },
             ["post-types"] = new[]
             {
                 new { type = "note", name = "Note" },
-                new { type = "article", name = "Article" }
+                new { type = "article", name = "Article" },
+                new { type = "photo", name = "Photo" },
+                new { type = "activity", name = "Activity" },
+                new { type = "reply", name = "Reply" },
+                new { type = "like", name = "Like" },
+                new { type = "repost", name = "Repost" },
+                new { type = "bookmark", name = "Bookmark" },
+                new { type = "blogroll", name = "Blogroll entry" },
+                new { type = "event", name = "Event" },
+                new { type = "audio", name = "Audio" },
+                new { type = "video", name = "Video" }
             }
         };
     }
@@ -293,7 +426,10 @@ public class MicropubController : ControllerBase
                     .ToArray(),
                 Published: ParsePublished(form["published"].FirstOrDefault()),
                 PostStatus: form["post-status"].FirstOrDefault(),
-                ProvidedProperties: provided);
+                ProvidedProperties: provided,
+                Properties: ReadFormProperties(form),
+                AddProperties: new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase),
+                DeleteProperties: new HashSet<string>(StringComparer.OrdinalIgnoreCase));
         }
 
         if (Request.ContentType?.Contains("json", StringComparison.OrdinalIgnoreCase) == true)
@@ -317,7 +453,12 @@ public class MicropubController : ControllerBase
                 Categories: ReadPropertyStrings(properties, "category"),
                 Published: ParsePublished(ReadFirstPropertyString(properties, "published")),
                 PostStatus: ReadFirstPropertyString(properties, "post-status"),
-                ProvidedProperties: provided);
+                ProvidedProperties: provided,
+                Properties: ReadJsonProperties(properties),
+                AddProperties: root.TryGetProperty("add", out var additions)
+                    ? ReadJsonProperties(additions, includeStandardProperties: true)
+                    : new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase),
+                DeleteProperties: ReadDeleteProperties(root));
         }
 
         throw new InvalidOperationException("Micropub requests must be form-encoded or JSON.");
@@ -329,7 +470,13 @@ public class MicropubController : ControllerBase
         {
             ["content"] = new[] { post.Content },
             ["url"] = new[] { url },
-            ["post-status"] = new[] { post.PublishedRevision is null ? "draft" : "published" }
+            ["post-status"] = new[]
+            {
+                post.State == PostStates.Deleted
+                    ? "deleted"
+                    : post.HasUnpublishedChanges ? "draft" : "published"
+            },
+            ["post-type"] = new[] { post.PostType }
         };
 
         if (post.PublishedUtc is { } publishedUtc)
@@ -350,6 +497,14 @@ public class MicropubController : ControllerBase
         if (post.Categories.Count > 0)
         {
             properties["category"] = post.Categories;
+        }
+
+        foreach (var property in post.MicropubProperties)
+        {
+            if (!properties.ContainsKey(property.Key))
+            {
+                properties[property.Key] = property.Value;
+            }
         }
 
         return new Dictionary<string, object>
@@ -471,6 +626,194 @@ public class MicropubController : ControllerBase
         return DateTimeOffset.TryParse(published, out var result) ? result : null;
     }
 
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>> ReadFormProperties(IFormCollection form)
+    {
+        var reserved = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "h", "action", "url", "access_token", "name", "content", "summary",
+            "category", "published", "post-status"
+        };
+        return form
+            .Where(pair => !reserved.Contains(pair.Key) && !pair.Key.StartsWith("mp-", StringComparison.OrdinalIgnoreCase))
+            .ToDictionary(
+                pair => pair.Key.TrimEnd('[', ']'),
+                pair => (IReadOnlyList<string>)pair.Value
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .Select(value => value!)
+                    .ToArray(),
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>> ReadJsonProperties(
+        JsonElement properties,
+        bool includeStandardProperties = false)
+    {
+        if (properties.ValueKind != JsonValueKind.Object)
+        {
+            return new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var reserved = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "name", "content", "summary", "category", "published", "post-status"
+        };
+        var result = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var property in properties.EnumerateObject())
+        {
+            if ((!includeStandardProperties && reserved.Contains(property.Name)) ||
+                property.Name.StartsWith("mp-", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var values = property.Value.ValueKind == JsonValueKind.Array
+                ? property.Value.EnumerateArray().Select(ReadPropertyValue).Where(value => value is not null).Select(value => value!).ToArray()
+                : [];
+            if (values.Length > 0)
+            {
+                result[property.Name] = values;
+            }
+        }
+
+        return result;
+    }
+
+    private static IReadOnlySet<string> ReadDeleteProperties(JsonElement root)
+    {
+        if (!root.TryGetProperty("delete", out var deletion))
+        {
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        if (deletion.ValueKind == JsonValueKind.Array)
+        {
+            return deletion.EnumerateArray()
+                .Where(value => value.ValueKind == JsonValueKind.String)
+                .Select(value => value.GetString())
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value!)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+
+        if (deletion.ValueKind == JsonValueKind.Object)
+        {
+            return deletion.EnumerateObject()
+                .Select(property => property.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+
+        return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string? ReadPropertyValue(JsonElement value)
+    {
+        if (value.ValueKind == JsonValueKind.String)
+        {
+            return value.GetString();
+        }
+
+        if (value.ValueKind == JsonValueKind.Object)
+        {
+            if (value.TryGetProperty("value", out var literal) && literal.ValueKind == JsonValueKind.String)
+            {
+                return literal.GetString();
+            }
+
+            if (value.TryGetProperty("html", out var html) && html.ValueKind == JsonValueKind.String)
+            {
+                return html.GetString();
+            }
+        }
+
+        return null;
+    }
+
+    private static string ResolvePostType(MicropubEntry entry)
+    {
+        if (entry.Properties.TryGetValue("post-type", out var explicitTypes) &&
+            explicitTypes.FirstOrDefault() is { } explicitType)
+        {
+            return explicitType.Trim().ToLowerInvariant();
+        }
+
+        if (entry.Properties.ContainsKey("in-reply-to")) return "reply";
+        if (entry.Properties.ContainsKey("like-of")) return "like";
+        if (entry.Properties.ContainsKey("repost-of")) return "repost";
+        if (entry.Properties.ContainsKey("bookmark-of")) return "bookmark";
+        if (entry.Properties.ContainsKey("photo")) return "photo";
+        if (entry.Properties.ContainsKey("video")) return "video";
+        if (entry.Properties.ContainsKey("audio")) return "audio";
+        if (entry.Properties.ContainsKey("start")) return "event";
+        return string.IsNullOrWhiteSpace(entry.Name) ? "note" : "article";
+    }
+
+    private static string BuildSlugContent(MicropubEntry entry, string content)
+    {
+        if (!string.IsNullOrWhiteSpace(content))
+        {
+            return content;
+        }
+
+        var propertyValue = entry.Properties
+            .Where(property => property.Key is not "post-type")
+            .SelectMany(property => property.Value)
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+        return propertyValue ?? $"entry-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}";
+    }
+
+    private static bool IsRelationshipProperty(string property) =>
+        property is "in-reply-to" or "like-of" or "repost-of" or "bookmark-of";
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>> MergeProperties(
+        IReadOnlyDictionary<string, IReadOnlyList<string>> current,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> replacement,
+        IReadOnlySet<string> provided,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> additions,
+        IReadOnlySet<string> deletions)
+    {
+        var merged = new Dictionary<string, IReadOnlyList<string>>(current, StringComparer.OrdinalIgnoreCase);
+        if (provided.Contains("post-type"))
+        {
+            foreach (var typeSpecific in new[]
+            {
+                "photo", "alt", "location", "in-reply-to", "like-of", "repost-of",
+                "bookmark-of", "url", "feed", "start", "end", "audio", "video"
+            })
+            {
+                if (!replacement.ContainsKey(typeSpecific))
+                {
+                    merged.Remove(typeSpecific);
+                }
+            }
+        }
+
+        foreach (var property in provided)
+        {
+            if (replacement.TryGetValue(property, out var values))
+            {
+                merged[property] = values;
+            }
+            else if (!property.StartsWith("mp-", StringComparison.OrdinalIgnoreCase))
+            {
+                merged.Remove(property);
+            }
+        }
+
+        foreach (var property in additions)
+        {
+            merged[property.Key] = merged.TryGetValue(property.Key, out var existing)
+                ? existing.Concat(property.Value).Distinct(StringComparer.Ordinal).ToArray()
+                : property.Value;
+        }
+
+        foreach (var property in deletions)
+        {
+            merged.Remove(property);
+        }
+
+        return merged;
+    }
+
     private static string StripHPrefix(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -491,7 +834,10 @@ public class MicropubController : ControllerBase
         IReadOnlyList<string> Categories,
         DateTimeOffset? Published,
         string? PostStatus,
-        IReadOnlySet<string> ProvidedProperties);
+        IReadOnlySet<string> ProvidedProperties,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> Properties,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> AddProperties,
+        IReadOnlySet<string> DeleteProperties);
 
     private record MicropubError(
         [property: System.Text.Json.Serialization.JsonPropertyName("error")] string Error,

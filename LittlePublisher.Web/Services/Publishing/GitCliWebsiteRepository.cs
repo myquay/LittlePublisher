@@ -42,9 +42,14 @@ public class GitCliWebsiteRepository : IWebsiteRepository
                     foreach (var mutation in mutations)
                     {
                         var fullPath = Path.Combine(checkoutPath, mutation.RelativePath);
-                        if (mutation.Content is null)
+                        if (mutation.Content is null && mutation.BinaryContent is null)
                         {
                             if (File.Exists(fullPath)) File.Delete(fullPath);
+                        }
+                        else if (mutation.BinaryContent is not null)
+                        {
+                            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+                            await File.WriteAllBytesAsync(fullPath, mutation.BinaryContent, cancellationToken);
                         }
                         else
                         {

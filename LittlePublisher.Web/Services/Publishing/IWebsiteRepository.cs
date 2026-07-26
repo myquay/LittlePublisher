@@ -12,9 +12,10 @@ public interface IWebsiteRepository
     Task CheckConnectionAsync(CancellationToken cancellationToken);
 }
 
-public sealed record RepositoryFileMutation(string RelativePath, string? Content)
+public sealed record RepositoryFileMutation(string RelativePath, string? Content, byte[]? BinaryContent = null)
 {
     public static RepositoryFileMutation Upsert(string relativePath, string content) => new(relativePath, content);
+    public static RepositoryFileMutation UpsertBinary(string relativePath, byte[] content) => new(relativePath, null, content);
     public static RepositoryFileMutation Delete(string relativePath) => new(relativePath, null);
 }
 

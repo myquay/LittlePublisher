@@ -6,7 +6,9 @@ public record PublishCreateRequest(
     string? Summary,
     IReadOnlyList<string> Categories,
     DateTimeOffset PublishedUtc,
-    string Slug);
+    string Slug,
+    string PostType = "",
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? Properties = null);
 
 public record PublishCreateResult(
     string Url,

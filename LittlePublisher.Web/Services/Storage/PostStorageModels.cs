@@ -6,6 +6,7 @@ public static class PostStates
     public const string Publishing = "publishing";
     public const string Published = "published";
     public const string PublishFailed = "publish-failed";
+    public const string Deleted = "deleted";
 }
 
 public record PostRecord(
@@ -29,9 +30,17 @@ public record PostRecord(
     string? SourceCommitSha,
     DateTimeOffset CreatedUtc,
     DateTimeOffset UpdatedUtc,
-    string ETag)
+    string ETag,
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? Properties = null,
+    DateTimeOffset? DeletedUtc = null)
 {
     public bool HasUnpublishedChanges => PublishedRevision is null || WorkingRevision > PublishedRevision;
+
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> MicropubProperties =>
+        Properties ?? EmptyProperties;
+
+    private static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> EmptyProperties =
+        new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
 }
 
 public record NewPost(
@@ -41,7 +50,8 @@ public record NewPost(
     IReadOnlyList<string> Categories,
     string Slug,
     string PostType,
-    DateTimeOffset? RequestedPublishedUtc = null);
+    DateTimeOffset? RequestedPublishedUtc = null,
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? Properties = null);
 
 public record PostUpdate(
     string? Title,
@@ -50,7 +60,8 @@ public record PostUpdate(
     IReadOnlyList<string> Categories,
     string Slug,
     string PostType,
-    DateTimeOffset? RequestedPublishedUtc = null);
+    DateTimeOffset? RequestedPublishedUtc = null,
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? Properties = null);
 
 public record ImportedPost(
     string? Title,

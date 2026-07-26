@@ -56,6 +56,37 @@ public class PublishingServiceTests
         Assert.EndsWith("A short note from a Micropub client.", repository.Content);
     }
 
+    [Fact]
+    public async Task PublishCreateAsync_WritesPhotoAsHugoActivity()
+    {
+        var repository = new CapturingWebsiteRepository();
+        var service = CreateService(repository);
+
+        var result = await service.PublishCreateAsync(
+            new PublishCreateRequest(
+                Name: "Nagano snow",
+                Content: "The best snow.",
+                Summary: null,
+                Categories: ["travel"],
+                PublishedUtc: new DateTimeOffset(2026, 05, 22, 14, 0, 0, TimeSpan.FromHours(12)),
+                Slug: "nagano-snow",
+                PostType: "photo",
+                Properties: new Dictionary<string, IReadOnlyList<string>>
+                {
+                    ["photo"] = ["https://example.com/media/snow.jpg"],
+                    ["alt"] = ["A snowboarder in deep snow"],
+                    ["location"] = ["Nagano, Japan"]
+                }),
+            CancellationToken.None);
+
+        Assert.Equal("blog/content/activity/2026-05/nagano-snow.md", repository.RelativePath);
+        Assert.Equal("https://example.com/activity/2026/05/nagano-snow/", result.Url);
+        Assert.Contains("activity_type: photo", repository.Content);
+        Assert.Contains("photo: 'https://example.com/media/snow.jpg'", repository.Content);
+        Assert.Contains("alt: A snowboarder in deep snow", repository.Content);
+        Assert.Contains("photo_location: Nagano, Japan", repository.Content);
+    }
+
     private static PublishingService CreateService(IWebsiteRepository repository)
     {
         var config = new AppConfiguration

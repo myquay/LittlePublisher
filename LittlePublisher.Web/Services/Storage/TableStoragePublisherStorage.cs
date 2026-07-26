@@ -41,6 +41,7 @@ public class TableStoragePublisherStorage : IPublisherStorage, IPostStorage
             Title = post.Title,
             Summary = post.Summary,
             CategoriesJson = System.Text.Json.JsonSerializer.Serialize(post.Categories),
+            PropertiesJson = SerializeProperties(post.Properties),
             Slug = post.Slug,
             PostType = post.PostType,
             State = PostStates.Draft,
@@ -63,11 +64,12 @@ public class TableStoragePublisherStorage : IPublisherStorage, IPostStorage
         entity.Title = update.Title;
         entity.Summary = update.Summary;
         entity.CategoriesJson = System.Text.Json.JsonSerializer.Serialize(update.Categories);
+        entity.PropertiesJson = SerializeProperties(update.Properties);
         entity.Slug = update.Slug;
         entity.PostType = update.PostType;
         entity.RequestedPublishedUtc = update.RequestedPublishedUtc;
         entity.WorkingRevision++;
-        entity.State = entity.PublishedRevision is null ? PostStates.Draft : PostStates.Published;
+        entity.State = PostStates.Draft;
         entity.LastPublishError = null;
         entity.UpdatedUtc = DateTimeOffset.UtcNow;
 
@@ -177,6 +179,20 @@ public class TableStoragePublisherStorage : IPublisherStorage, IPostStorage
             await Posts.UpdateEntityAsync(entity, entity.ETag, TableUpdateMode.Replace, cancellationToken);
         }
 
+        return (await GetPostAsync(postId, cancellationToken))!;
+    }
+
+    public async Task<PostRecord> SetDeletedAsync(string postId, bool deleted, CancellationToken cancellationToken)
+    {
+        var entity = await GetPostEntityAsync(postId, cancellationToken);
+        entity.DeletedUtc = deleted ? DateTimeOffset.UtcNow : null;
+        entity.State = deleted
+            ? PostStates.Deleted
+            : entity.PublishedRevision is null || entity.WorkingRevision > entity.PublishedRevision
+                ? PostStates.Draft
+                : PostStates.Published;
+        entity.UpdatedUtc = DateTimeOffset.UtcNow;
+        await Posts.UpdateEntityAsync(entity, entity.ETag, TableUpdateMode.Replace, cancellationToken);
         return (await GetPostAsync(postId, cancellationToken))!;
     }
 
@@ -384,6 +400,7 @@ public class TableStoragePublisherStorage : IPublisherStorage, IPostStorage
             Title = post.Title,
             Summary = post.Summary,
             CategoriesJson = post.CategoriesJson,
+            PropertiesJson = post.PropertiesJson,
             Slug = post.Slug,
             PostType = post.PostType,
             RequestedPublishedUtc = post.RequestedPublishedUtc,
@@ -450,6 +467,12 @@ public class TableStoragePublisherStorage : IPublisherStorage, IPostStorage
         {
             throw new InvalidOperationException($"Post content exceeds the {MaximumContentCharacters:N0} character limit.");
         }
+    }
+
+    private static string SerializeProperties(IReadOnlyDictionary<string, IReadOnlyList<string>>? properties)
+    {
+        return System.Text.Json.JsonSerializer.Serialize(
+            properties ?? new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase));
     }
 
     private static string PostRowKey(string id) => $"post:{id}";
@@ -528,6 +551,7 @@ public class TableStoragePublisherStorage : IPublisherStorage, IPostStorage
         public string? Title { get; set; }
         public string? Summary { get; set; }
         public string CategoriesJson { get; set; } = "[]";
+        public string PropertiesJson { get; set; } = "{}";
         public string Slug { get; set; } = default!;
         public string PostType { get; set; } = default!;
         public string State { get; set; } = PostStates.Draft;
@@ -541,16 +565,20 @@ public class TableStoragePublisherStorage : IPublisherStorage, IPostStorage
         public string? LastPublishError { get; set; }
         public string? SourceRepositoryPath { get; set; }
         public string? SourceCommitSha { get; set; }
+        public DateTimeOffset? DeletedUtc { get; set; }
         public DateTimeOffset CreatedUtc { get; set; }
         public DateTimeOffset UpdatedUtc { get; set; }
 
         public PostRecord ToRecord(string content)
         {
             var categories = System.Text.Json.JsonSerializer.Deserialize<IReadOnlyList<string>>(CategoriesJson) ?? [];
+            var properties = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, IReadOnlyList<string>>>(
+                PropertiesJson) ?? new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
             return new(
                 Id, Title, content, Summary, categories, Slug, PostType, State, WorkingRevision,
                 PublishedRevision, RequestedPublishedUtc, PublishedUtc, PublishedUrl, FilePath, CommitSha,
-                LastPublishError, SourceRepositoryPath, SourceCommitSha, CreatedUtc, UpdatedUtc, ETag.ToString());
+                LastPublishError, SourceRepositoryPath, SourceCommitSha, CreatedUtc, UpdatedUtc, ETag.ToString(),
+                properties, DeletedUtc);
         }
     }
 
@@ -565,6 +593,7 @@ public class TableStoragePublisherStorage : IPublisherStorage, IPostStorage
         public string? Title { get; set; }
         public string? Summary { get; set; }
         public string CategoriesJson { get; set; } = "[]";
+        public string PropertiesJson { get; set; } = "{}";
         public string Slug { get; set; } = default!;
         public string PostType { get; set; } = default!;
         public DateTimeOffset? RequestedPublishedUtc { get; set; }

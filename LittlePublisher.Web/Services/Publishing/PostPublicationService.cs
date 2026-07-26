@@ -42,7 +42,9 @@ public class PostPublicationService : IPostPublicationService
                     Summary: post.Summary,
                     Categories: post.Categories,
                     PublishedUtc: publishedUtc,
-                    Slug: post.Slug),
+                    Slug: post.Slug,
+                    PostType: post.PostType,
+                    Properties: post.MicropubProperties),
                 cancellationToken);
 
             return await _storage.MarkPublishedAsync(
@@ -61,11 +63,41 @@ public class PostPublicationService : IPostPublicationService
         }
     }
 
+    public async Task<PostRecord> DeleteAsync(string postId, CancellationToken cancellationToken)
+    {
+        var post = await _storage.GetPostAsync(postId, cancellationToken) ??
+            throw new InvalidOperationException($"Post '{postId}' was not found.");
+        if (!string.IsNullOrWhiteSpace(post.FilePath))
+        {
+            await _publishing.DeleteAsync(post.FilePath, $"Delete {post.Title ?? post.Slug}", cancellationToken);
+        }
+        if (string.Equals(post.PostType, "blogroll", StringComparison.OrdinalIgnoreCase))
+        {
+            await _publishing.DeleteAsync(
+                $"blog/data/blogroll/{post.Slug}.json",
+                $"Remove {post.Title ?? post.Slug} from blogroll",
+                cancellationToken);
+        }
+
+        return await _storage.SetDeletedAsync(post.Id, true, cancellationToken);
+    }
+
+    public async Task<PostRecord> UndeleteAsync(string postId, CancellationToken cancellationToken)
+    {
+        var post = await _storage.SetDeletedAsync(postId, false, cancellationToken);
+        return post.PublishedRevision is null
+            ? post
+            : await PublishAsync(post.Id, cancellationToken);
+    }
+
     private string BuildProjectedPath(PostRecord post, DateTimeOffset publishedUtc)
     {
         var contentPath = _config.GitHub.ContentPath.Trim('/');
-        return string.Equals(post.PostType, "article", StringComparison.OrdinalIgnoreCase)
-            ? $"{contentPath}/post/{publishedUtc:yyyy}/{post.Slug}.md"
-            : $"{contentPath}/note/{publishedUtc:yyyy-MM}/{post.Slug}.md";
+        return post.PostType.ToLowerInvariant() switch
+        {
+            "article" => $"{contentPath}/post/{publishedUtc:yyyy}/{post.Slug}.md",
+            "note" => $"{contentPath}/note/{publishedUtc:yyyy-MM}/{post.Slug}.md",
+            _ => $"{contentPath}/activity/{publishedUtc:yyyy-MM}/{post.Slug}.md"
+        };
     }
 }
