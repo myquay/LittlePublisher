@@ -115,12 +115,26 @@ public class MarkdownPublishedItemParser
             return null;
         }
 
-        if (!DateTimeOffset.TryParse(published, out var publishedUtc))
+        if (!DateTimeOffset.TryParse(NormalizePublishedDate(published), out var publishedUtc))
         {
             throw new InvalidOperationException("Published date is invalid.");
         }
 
         return publishedUtc;
+    }
+
+    private static string NormalizePublishedDate(string value)
+    {
+        var timeSeparator = value.IndexOf('T');
+        if (timeSeparator >= 0 &&
+            timeSeparator + 2 < value.Length &&
+            char.IsDigit(value[timeSeparator + 1]) &&
+            value[timeSeparator + 2] == ':')
+        {
+            return value.Insert(timeSeparator + 1, "0");
+        }
+
+        return value;
     }
 
     private string BuildUrl(string relativePath, IReadOnlyDictionary<string, FrontMatterValue> frontMatter)

@@ -131,6 +131,17 @@ public class SetupAndPublishingEdgeTests
     }
 
     [Fact]
+    public void GitCliWebsiteRepository_FiltersUsingConfiguredImportPaths()
+    {
+        var method = typeof(GitCliWebsiteRepository).GetMethod("IsWithinImportPaths", BindingFlags.NonPublic | BindingFlags.Static)!;
+        string[] importPaths = ["site/content/articles", "site/content/notes"];
+
+        Assert.True(Assert.IsType<bool>(method.Invoke(null, ["site/content/articles/hello.md", importPaths])));
+        Assert.True(Assert.IsType<bool>(method.Invoke(null, ["site/content/notes/today.md", importPaths])));
+        Assert.False(Assert.IsType<bool>(method.Invoke(null, ["site/content/about.md", importPaths])));
+    }
+
+    [Fact]
     public void GitCliWebsiteRepository_BuildsAuthenticatedHttpsRemoteAndRedactsErrors()
     {
         var repository = new GitCliWebsiteRepository(new AppConfiguration

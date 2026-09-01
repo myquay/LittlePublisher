@@ -96,6 +96,18 @@ public class GitCliWebsiteRepository : IWebsiteRepository
 
             var contentPath = _config.ContentPath.Trim('/');
             ValidateRelativePath(contentPath);
+            var importPaths = _config.ImportPaths.Length == 0
+                ? [contentPath]
+                : _config.ImportPaths.Select(path => path.Trim('/')).ToArray();
+            foreach (var importPath in importPaths)
+            {
+                ValidateRelativePath(importPath);
+                if (!string.Equals(importPath, contentPath, StringComparison.OrdinalIgnoreCase) &&
+                    !importPath.StartsWith($"{contentPath}/", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException("App:GitHub:ImportPaths entries must be within App:GitHub:ContentPath.");
+                }
+            }
 
             var fullContentPath = Path.Combine(checkoutPath, contentPath);
 
@@ -108,6 +120,9 @@ public class GitCliWebsiteRepository : IWebsiteRepository
             var files = Directory
                 .EnumerateFiles(fullContentPath, "*", SearchOption.AllDirectories)
                 .Where(IsImportableMarkdownFile)
+                .Where(file => IsWithinImportPaths(
+                    Path.GetRelativePath(checkoutPath, file).Replace(Path.DirectorySeparatorChar, '/'),
+                    importPaths))
                 .Order(StringComparer.OrdinalIgnoreCase)
                 .Select(file => new WebsiteContentFile(
                     RelativePath: Path.GetRelativePath(checkoutPath, file).Replace(Path.DirectorySeparatorChar, '/'),
@@ -200,6 +215,14 @@ public class GitCliWebsiteRepository : IWebsiteRepository
         }
 
         return !string.Equals(Path.GetFileNameWithoutExtension(path), "_index", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsWithinImportPaths(string relativePath, IReadOnlyList<string> importPaths)
+    {
+        var normalized = relativePath.Replace('\\', '/').Trim('/');
+        return importPaths.Any(path =>
+            string.Equals(normalized, path, StringComparison.OrdinalIgnoreCase) ||
+            normalized.StartsWith($"{path.Trim('/')}/", StringComparison.OrdinalIgnoreCase));
     }
 
     private static void DeleteCheckout(string checkoutPath)

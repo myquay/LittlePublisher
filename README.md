@@ -29,6 +29,19 @@ Use **Preview sync** on the dashboard before **Import from repository**. The imp
 
 After a successful import with no unresolved failures, published files remain in GitHub as the public baseline. Any imported draft files are listed by the report and should be removed from GitHub in a separately reviewed cleanup commit. Repository import is a bootstrap/recovery operation; it is not a continuing two-way synchronization mechanism.
 
+By default, import considers every Markdown file beneath `App:GitHub:ContentPath`.
+Repositories that keep non-post pages in the same content tree can restrict the
+initial import with repository-relative paths:
+
+```text
+App__GitHub__ImportPaths__0=content/articles
+App__GitHub__ImportPaths__1=content/notes
+```
+
+Each import path must be inside `App:GitHub:ContentPath`; section names and
+repository layout remain deployment-specific rather than being built into
+LittlePublisher.
+
 ## Prerequisites
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)

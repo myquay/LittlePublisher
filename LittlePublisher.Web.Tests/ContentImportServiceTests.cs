@@ -224,6 +224,32 @@ public class ContentImportServiceTests
     }
 
     [Fact]
+    public async Task ImportRepositoryAsync_AcceptsSingleDigitPublishedHour()
+    {
+        var storage = new CapturingStorage();
+        var service = CreateService(
+            storage,
+            new WebsiteContentFile(
+                RelativePath: "blog/content/note/2023-07/httpcompletionoption-responseheadersread.md",
+                Content: """
+                    ---
+                    date: 2023-07-07T9:00:00+12:00
+                    title: HttpCompletionOption ResponseHeadersRead
+                    url: /notes/httpcompletionoption-responseheadersread
+                    ---
+
+                    Note body.
+                    """,
+                CommitSha: "abc123"));
+
+        var result = await service.ImportRepositoryAsync(new ImportRepositoryRequest(), CancellationToken.None);
+
+        Assert.Equal(1, result.Imported);
+        Assert.Equal(0, result.Failed);
+        Assert.Equal(new DateTimeOffset(2023, 7, 7, 9, 0, 0, TimeSpan.FromHours(12)), storage.SavedItem!.PublishedUtc);
+    }
+
+    [Fact]
     public async Task ImportRepositoryAsync_PreservesAuthoringProperties()
     {
         var storage = new CapturingStorage();

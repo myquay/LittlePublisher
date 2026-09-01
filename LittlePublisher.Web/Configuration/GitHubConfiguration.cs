@@ -30,4 +30,10 @@ public class GitHubConfiguration
     /// LittlePublisher creates post and note section folders under this path.
     /// </summary>
     public string ContentPath { get; set; } = "blog/content";
+
+    /// <summary>
+    /// Optional repository-relative paths to include during the initial import.
+    /// When empty, all Markdown beneath <see cref="ContentPath"/> is considered.
+    /// </summary>
+    public string[] ImportPaths { get; set; } = [];
 }
