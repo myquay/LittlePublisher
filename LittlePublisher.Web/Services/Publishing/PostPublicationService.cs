@@ -20,6 +20,11 @@ public class PostPublicationService : IPostPublicationService
     {
         var post = await _storage.GetPostAsync(postId, cancellationToken) ??
             throw new InvalidOperationException($"Post '{postId}' was not found.");
+        var validation = ContentTypeCatalog.Validate(post.PostType, post.MicropubProperties, requireComplete: true);
+        if (validation is not null)
+        {
+            throw new InvalidOperationException(validation);
+        }
         var revision = post.WorkingRevision;
         var publishedUtc = post.PublishedUtc ??
             post.RequestedPublishedUtc ??
@@ -37,7 +42,7 @@ public class PostPublicationService : IPostPublicationService
         {
             var result = await _publishing.PublishCreateAsync(
                 new PublishCreateRequest(
-                    Name: string.Equals(post.PostType, "article", StringComparison.OrdinalIgnoreCase) ? post.Title : null,
+                    Name: post.Title,
                     Content: post.Content,
                     Summary: post.Summary,
                     Categories: post.Categories,

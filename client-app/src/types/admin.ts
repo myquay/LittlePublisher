@@ -18,7 +18,8 @@ export interface Post {
   summary?: string | null
   categories: string[]
   slug: string
-  postType: 'article' | 'note'
+  postType: PostType
+  properties: Record<string, string[]>
   state: string
   workingRevision: number
   publishedRevision?: number | null
@@ -73,6 +74,27 @@ export interface SavePostRequest {
   summary?: string | null
   categories: string[]
   slug?: string | null
-  postType: 'article' | 'note'
+  postType: PostType
   requestedPublishedUtc?: string | null
+  properties: Record<string, string[]>
+}
+
+export type PostType =
+  | 'article'
+  | 'note'
+  | 'photo'
+  | 'activity'
+  | 'thought'
+  | 'reply'
+  | 'like'
+  | 'repost'
+  | 'bookmark'
+  | 'blogroll'
+  | 'event'
+  | 'audio'
+  | 'video'
+
+export interface MediaUploadResult {
+  url: string
+  repositoryPath: string
 }

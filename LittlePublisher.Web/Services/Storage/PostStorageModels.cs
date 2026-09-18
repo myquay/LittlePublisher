@@ -74,4 +74,5 @@ public record ImportedPost(
     DateTimeOffset? PublishedUtc,
     string PublishedUrl,
     string RepositoryPath,
-    string CommitSha);
+    string CommitSha,
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? Properties = null);

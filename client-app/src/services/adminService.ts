@@ -4,6 +4,7 @@ import type {
   AdminDashboard,
   ImportRepositoryRequest,
   ImportRepositoryResult,
+  MediaUploadResult,
   Post,
   SavePostRequest,
 } from '@/types/admin'
@@ -53,6 +54,18 @@ export const adminService = {
 
   async publishPost(id: string): Promise<Post> {
     const response = await api.post<Post>(`/posts/${id}/publish`)
+    return response.data
+  },
+
+  async uploadMedia(file: File, onProgress?: (percent: number) => void): Promise<MediaUploadResult> {
+    const form = new FormData()
+    form.append('file', file)
+    const response = await api.post<MediaUploadResult>('/media', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (event) => {
+        if (event.total && onProgress) onProgress(Math.round((event.loaded / event.total) * 100))
+      },
+    })
     return response.data
   },
 }

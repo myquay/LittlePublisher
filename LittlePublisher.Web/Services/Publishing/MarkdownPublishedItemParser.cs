@@ -45,6 +45,8 @@ public class MarkdownPublishedItemParser
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
         var url = BuildUrl(file.RelativePath, frontMatter);
+        var postType = InferPostType(file.RelativePath, frontMatter, title);
+        var properties = ReadProperties(frontMatter, postType);
 
         return new ParsedPublishedItem(
             Url: url,
@@ -55,8 +57,70 @@ public class MarkdownPublishedItemParser
             PublishedUtc: published,
             FilePath: file.RelativePath,
             CommitSha: file.CommitSha,
-            Draft: explicitlyDraft == true);
+            Draft: explicitlyDraft == true,
+            PostType: postType,
+            Properties: properties);
     }
+
+    private static string InferPostType(
+        string relativePath,
+        IReadOnlyDictionary<string, FrontMatterValue> frontMatter,
+        string? title)
+    {
+        if (ReadString(frontMatter, "activity_type") is { } activityType)
+        {
+            if (string.Equals(activityType, "status", StringComparison.OrdinalIgnoreCase))
+            {
+                return "activity";
+            }
+            return ContentTypeCatalog.Normalize(activityType, title);
+        }
+
+        var parts = relativePath.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var contentIndex = Array.FindIndex(parts, part => string.Equals(part, "content", StringComparison.OrdinalIgnoreCase));
+        var section = contentIndex >= 0 && contentIndex + 1 < parts.Length ? parts[contentIndex + 1] : null;
+
+        return section?.ToLowerInvariant() switch
+        {
+            "post" => "article",
+            "note" => "note",
+            "activity" => "activity",
+            _ => string.IsNullOrWhiteSpace(title) ? "note" : "article"
+        };
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>> ReadProperties(
+        IReadOnlyDictionary<string, FrontMatterValue> frontMatter,
+        string postType)
+    {
+        IReadOnlyDictionary<string, string> mappings = postType switch
+        {
+            "photo" => Map(("photo", "photo"), ("alt", "alt"), ("photo_location", "location")),
+            "reply" => Map(("in_reply_to", "in-reply-to"), ("reply_to_title", "reply-to-title")),
+            "like" => Map(("like_of", "like-of")),
+            "repost" => Map(("repost_of", "repost-of")),
+            "bookmark" => Map(("bookmark_of", "bookmark-of")),
+            "blogroll" => Map(("site_url", "url"), ("feed_url", "feed")),
+            "event" => Map(("start", "start"), ("end", "end"), ("location", "location")),
+            "audio" => Map(("audio", "audio"), ("alt", "alt")),
+            "video" => Map(("video", "video"), ("alt", "alt")),
+            _ => Map()
+        };
+        var properties = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (frontMatterName, propertyName) in mappings)
+        {
+            var values = ReadScalarOrList(frontMatter, frontMatterName);
+            if (values.Count > 0)
+            {
+                properties[propertyName] = values;
+            }
+        }
+
+        return ContentTypeCatalog.NormalizeProperties(postType, properties);
+    }
+
+    private static IReadOnlyDictionary<string, string> Map(params (string FrontMatter, string Property)[] values) =>
+        values.ToDictionary(value => value.FrontMatter, value => value.Property, StringComparer.OrdinalIgnoreCase);
 
     private static Dictionary<string, FrontMatterValue> ParseFrontMatter(IReadOnlyList<string> lines)
     {
@@ -188,6 +252,12 @@ public class MarkdownPublishedItemParser
             return $"note/{parts[1]}/{Path.GetFileNameWithoutExtension(parts[2])}";
         }
 
+        if (parts.Length == 3 &&
+            string.Equals(parts[0], "activity", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"activity/{parts[1].Replace('-', '/')}/{Path.GetFileNameWithoutExtension(parts[2])}";
+        }
+
         return Path.ChangeExtension(contentRelativePath, null);
     }
 
@@ -240,6 +310,23 @@ public class MarkdownPublishedItemParser
         return string.IsNullOrWhiteSpace(value.Value)
             ? Array.Empty<string>()
             : value.Value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    }
+
+    private static IReadOnlyList<string> ReadScalarOrList(
+        IReadOnlyDictionary<string, FrontMatterValue> frontMatter,
+        string key)
+    {
+        if (!frontMatter.TryGetValue(key, out var value))
+        {
+            return Array.Empty<string>();
+        }
+
+        if (value.Items.Count > 0)
+        {
+            return value.Items;
+        }
+
+        return string.IsNullOrWhiteSpace(value.Value) ? Array.Empty<string>() : [value.Value];
     }
 
     private static bool? ReadBoolean(IReadOnlyDictionary<string, FrontMatterValue> frontMatter, string key)

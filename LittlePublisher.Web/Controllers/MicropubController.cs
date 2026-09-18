@@ -388,21 +388,9 @@ public class MicropubController : ControllerBase
             ["media-endpoint"] = $"{host}/micropub/media",
             ["syndicate-to"] = Array.Empty<object>(),
             ["extensions"] = new[] { "q=posts", "post-status", "delete", "undelete" },
-            ["post-types"] = new[]
-            {
-                new { type = "note", name = "Note" },
-                new { type = "article", name = "Article" },
-                new { type = "photo", name = "Photo" },
-                new { type = "activity", name = "Activity" },
-                new { type = "reply", name = "Reply" },
-                new { type = "like", name = "Like" },
-                new { type = "repost", name = "Repost" },
-                new { type = "bookmark", name = "Bookmark" },
-                new { type = "blogroll", name = "Blogroll entry" },
-                new { type = "event", name = "Event" },
-                new { type = "audio", name = "Audio" },
-                new { type = "video", name = "Video" }
-            }
+            ["post-types"] = ContentTypeCatalog.SupportedTypes
+                .Select(type => new { type, name = ContentTypeCatalog.DisplayName(type) })
+                .ToArray()
         };
     }
 

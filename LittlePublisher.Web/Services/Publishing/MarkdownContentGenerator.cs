@@ -84,10 +84,16 @@ public class MarkdownContentGenerator : IContentGenerator
             $"activity_type: {YamlValue(request.PostType)}"
         };
 
+        if (!string.IsNullOrWhiteSpace(request.Summary))
+        {
+            lines.Add($"summary: {YamlValue(request.Summary)}");
+        }
+
         AddProperty(lines, properties, "photo", "photo");
         AddProperty(lines, properties, "alt", "alt");
         AddProperty(lines, properties, "location", "photo_location");
         AddProperty(lines, properties, "in-reply-to", "in_reply_to");
+        AddProperty(lines, properties, "reply-to-title", "reply_to_title");
         AddProperty(lines, properties, "like-of", "like_of");
         AddProperty(lines, properties, "repost-of", "repost_of");
         AddProperty(lines, properties, "bookmark-of", "bookmark_of");
@@ -97,6 +103,10 @@ public class MarkdownContentGenerator : IContentGenerator
             "url",
             string.Equals(request.PostType, "blogroll", StringComparison.OrdinalIgnoreCase) ? "like_of" : "site_url");
         AddProperty(lines, properties, "feed", "feed_url");
+        AddProperty(lines, properties, "start", "start");
+        AddProperty(lines, properties, "end", "end");
+        AddProperty(lines, properties, "audio", "audio");
+        AddProperty(lines, properties, "video", "video");
 
         if (request.Categories.Count > 0)
         {

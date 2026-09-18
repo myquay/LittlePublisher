@@ -90,12 +90,13 @@ public class ContentImportService : IContentImportService
                         Summary: item.Summary,
                         Categories: item.Categories,
                         Slug: BuildSlug(item),
-                        PostType: InferPostType(item.FilePath, item.Title),
+                        PostType: item.PostType,
                         Draft: item.Draft,
                         PublishedUtc: item.PublishedUtc,
                         PublishedUrl: item.Url,
                         RepositoryPath: item.FilePath,
-                        CommitSha: item.CommitSha ?? string.Empty),
+                        CommitSha: item.CommitSha ?? string.Empty,
+                        Properties: item.Properties),
                     request.Overwrite,
                     cancellationToken);
             }
@@ -127,11 +128,4 @@ public class ContentImportService : IContentImportService
         return PublishingService.BuildSlug(candidate, item.Content);
     }
 
-    private static string InferPostType(string filePath, string? title)
-    {
-        var normalized = filePath.Replace('\\', '/');
-        return normalized.Contains("/note/", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(title)
-            ? "note"
-            : "article";
-    }
 }

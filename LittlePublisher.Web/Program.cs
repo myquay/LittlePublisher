@@ -119,6 +119,7 @@ builder.Services.AddSingleton<IPublisherStorage>(services => services.GetRequire
 builder.Services.AddSingleton<IPostStorage>(services => services.GetRequiredService<TableStoragePublisherStorage>());
 builder.Services.AddSingleton<IContentGenerator, MarkdownContentGenerator>();
 builder.Services.AddSingleton<IWebsiteRepository, GitCliWebsiteRepository>();
+builder.Services.AddSingleton<MediaPublicationService>();
 builder.Services.AddSingleton<IPublishingService, PublishingService>();
 builder.Services.AddSingleton<IPostPublicationService, PostPublicationService>();
 builder.Services.AddSingleton<MarkdownPublishedItemParser>();

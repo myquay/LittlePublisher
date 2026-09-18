@@ -9,4 +9,6 @@ public record ParsedPublishedItem(
     DateTimeOffset? PublishedUtc,
     string FilePath,
     string? CommitSha,
-    bool Draft);
+    bool Draft,
+    string PostType,
+    IReadOnlyDictionary<string, IReadOnlyList<string>> Properties);

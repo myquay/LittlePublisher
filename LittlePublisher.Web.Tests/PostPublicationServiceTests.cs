@@ -35,6 +35,23 @@ public class PostPublicationServiceTests
         Assert.Equal("push failed", storage.Post.LastPublishError);
     }
 
+    [Fact]
+    public async Task PublishAsync_PreservesPhotoTitleAndProperties()
+    {
+        var storage = new PublicationStorage
+        {
+            Post = BuildPhotoPost()
+        };
+        var publishing = new PublicationGateway();
+        var service = new PostPublicationService(storage, publishing, Config());
+
+        await service.PublishAsync("photo-1", CancellationToken.None);
+
+        Assert.Equal("Nagano snow", publishing.Request!.Name);
+        Assert.Equal("photo", publishing.Request.PostType);
+        Assert.Equal(["/media/snow.jpg"], publishing.Request.Properties!["photo"]);
+    }
+
     private sealed class PublicationGateway : IPublishingService
     {
         public PublishCreateRequest? Request { get; private set; }
@@ -55,7 +72,7 @@ public class PostPublicationServiceTests
 
     private sealed class PublicationStorage : IPostStorage
     {
-        public PostRecord Post { get; private set; } = BuildPost();
+        public PostRecord Post { get; set; } = BuildPost();
 
         public Task<PostRecord?> GetPostAsync(string postId, CancellationToken cancellationToken) =>
             Task.FromResult<PostRecord?>(Post);
@@ -102,5 +119,18 @@ public class PostPublicationServiceTests
                 2, 1, null, now.AddDays(-1), "https://example.com/post/", "content/post.md", "commit-1",
                 null, null, null, now.AddDays(-2), now, "etag");
         }
+    }
+
+    private static PostRecord BuildPhotoPost()
+    {
+        var now = DateTimeOffset.UtcNow;
+        return new PostRecord(
+            "photo-1", "Nagano snow", "The best snow", null, [], "nagano-snow", "photo", PostStates.Draft,
+            1, null, null, null, null, null, null, null, null, null, now, now, "etag",
+            new Dictionary<string, IReadOnlyList<string>>
+            {
+                ["photo"] = ["/media/snow.jpg"],
+                ["alt"] = ["A snowboarder in deep snow"]
+            });
     }
 }

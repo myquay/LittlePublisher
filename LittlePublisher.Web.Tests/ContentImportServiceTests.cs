@@ -262,6 +262,65 @@ public class ContentImportServiceTests
         Assert.Equal("indieweb", storage.SavedItem.Categories[0]);
     }
 
+    [Fact]
+    public async Task ImportRepositoryAsync_ImportsPhotoTypePropertiesAndPublicUrl()
+    {
+        var storage = new CapturingStorage();
+        var service = CreateService(
+            storage,
+            new WebsiteContentFile(
+                RelativePath: "blog/content/activity/2026-05/japan-nagano.md",
+                Content: """
+                    ---
+                    title: Japan, Nagano
+                    date: 2026-05-22T14:00:00+12:00
+                    activity_type: photo
+                    photo: /media/2026/05/snow.jpg
+                    alt: Me carrying my snowboard
+                    photo_location: Nagano, Japan
+                    summary: The snow was amazing
+                    tags:
+                        - travel
+                    ---
+
+                    The best snow.
+                    """,
+                CommitSha: "photo123"));
+
+        var result = await service.ImportRepositoryAsync(new ImportRepositoryRequest(), CancellationToken.None);
+
+        Assert.Equal(1, result.Imported);
+        Assert.Equal("photo", storage.SavedItem!.PostType);
+        Assert.Equal("https://example.com/activity/2026/05/japan-nagano/", storage.SavedItem.PublishedUrl);
+        Assert.Equal(["/media/2026/05/snow.jpg"], storage.SavedItem.Properties!["photo"]);
+        Assert.Equal(["Me carrying my snowboard"], storage.SavedItem.Properties["alt"]);
+        Assert.Equal(["Nagano, Japan"], storage.SavedItem.Properties["location"]);
+    }
+
+    [Fact]
+    public async Task ImportRepositoryAsync_MapsStatusActivityWithoutTreatingItAsArticle()
+    {
+        var storage = new CapturingStorage();
+        var service = CreateService(
+            storage,
+            new WebsiteContentFile(
+                RelativePath: "blog/content/activity/2026-05/a-thought.md",
+                Content: """
+                    ---
+                    title: A thought
+                    date: 2026-05-22T14:00:00+12:00
+                    activity_type: status
+                    ---
+
+                    A small thought.
+                    """,
+                CommitSha: "activity123"));
+
+        await service.ImportRepositoryAsync(new ImportRepositoryRequest(), CancellationToken.None);
+
+        Assert.Equal("activity", storage.SavedItem!.PostType);
+    }
+
     private static ContentImportService CreateService(CapturingStorage storage, params WebsiteContentFile[] files)
     {
         var config = new AppConfiguration

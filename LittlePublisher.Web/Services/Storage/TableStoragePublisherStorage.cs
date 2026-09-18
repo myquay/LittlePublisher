@@ -210,14 +210,14 @@ public class TableStoragePublisherStorage : IPublisherStorage, IPostStorage
         if (existing is null)
         {
             record = await CreatePostAsync(
-                new NewPost(post.Title, post.Content, post.Summary, post.Categories, post.Slug, post.PostType, post.PublishedUtc),
+                new NewPost(post.Title, post.Content, post.Summary, post.Categories, post.Slug, post.PostType, post.PublishedUtc, post.Properties),
                 cancellationToken);
         }
         else
         {
             record = await UpdatePostAsync(
                 existing.Id,
-                new PostUpdate(post.Title, post.Content, post.Summary, post.Categories, post.Slug, post.PostType, post.PublishedUtc),
+                new PostUpdate(post.Title, post.Content, post.Summary, post.Categories, post.Slug, post.PostType, post.PublishedUtc, post.Properties),
                 existing.ETag,
                 cancellationToken);
         }

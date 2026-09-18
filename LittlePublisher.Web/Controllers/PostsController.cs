@@ -42,7 +42,13 @@ public class PostsController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] SavePostRequest request, CancellationToken cancellationToken)
     {
-        var validation = Validate(request);
+        var normalized = Normalize(request);
+        if (normalized.Error is not null)
+        {
+            return BadRequest(new ApiError(normalized.Error));
+        }
+
+        var validation = Validate(request, normalized.PostType!, normalized.Properties!, requireComplete: false);
         if (validation is not null)
         {
             return BadRequest(new ApiError(validation));
@@ -55,8 +61,9 @@ public class PostsController : ControllerBase
                 request.Summary,
                 request.Categories ?? [],
                 PublishingService.BuildSlug(request.Slug ?? request.Title, request.Content),
-                NormalizePostType(request.PostType, request.Title),
-                request.RequestedPublishedUtc),
+                normalized.PostType!,
+                request.RequestedPublishedUtc,
+                normalized.Properties),
             cancellationToken);
 
         return CreatedAtAction(nameof(Get), new { id = post.Id }, post);
@@ -74,7 +81,13 @@ public class PostsController : ControllerBase
             return StatusCode(StatusCodes.Status428PreconditionRequired, new ApiError("If-Match is required."));
         }
 
-        var validation = Validate(request);
+        var normalized = Normalize(request);
+        if (normalized.Error is not null)
+        {
+            return BadRequest(new ApiError(normalized.Error));
+        }
+
+        var validation = Validate(request, normalized.PostType!, normalized.Properties!, requireComplete: false);
         if (validation is not null)
         {
             return BadRequest(new ApiError(validation));
@@ -90,8 +103,9 @@ public class PostsController : ControllerBase
                     request.Summary,
                     request.Categories ?? [],
                     PublishingService.BuildSlug(request.Slug ?? request.Title, request.Content),
-                    NormalizePostType(request.PostType, request.Title),
-                    request.RequestedPublishedUtc),
+                    normalized.PostType!,
+                    request.RequestedPublishedUtc,
+                    normalized.Properties),
                 expectedETag,
                 cancellationToken);
             return Ok(post);
@@ -109,9 +123,19 @@ public class PostsController : ControllerBase
     [HttpPost("{id}/publish")]
     public async Task<IActionResult> Publish(string id, CancellationToken cancellationToken)
     {
-        if (await _storage.GetPostAsync(id, cancellationToken) is null)
+        var storedPost = await _storage.GetPostAsync(id, cancellationToken);
+        if (storedPost is null)
         {
             return NotFound(new ApiError($"Post '{id}' was not found."));
+        }
+
+        var validation = ContentTypeCatalog.Validate(
+            storedPost.PostType,
+            storedPost.MicropubProperties,
+            requireComplete: true);
+        if (validation is not null)
+        {
+            return BadRequest(new ApiError(validation));
         }
 
         PublishJobRecord? job = null;
@@ -144,25 +168,32 @@ public class PostsController : ControllerBase
         }
     }
 
-    private static string? Validate(SavePostRequest request)
+    private static string? Validate(
+        SavePostRequest request,
+        string postType,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> properties,
+        bool requireComplete)
     {
         if (string.IsNullOrWhiteSpace(request.Content) && string.IsNullOrWhiteSpace(request.Title))
         {
             return "A post requires content or a title.";
         }
 
-        return null;
+        return ContentTypeCatalog.Validate(postType, properties, requireComplete);
     }
 
-    private static string NormalizePostType(string? postType, string? title)
+    private static NormalizedPost Normalize(SavePostRequest request)
     {
-        if (string.Equals(postType, "article", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(postType, "note", StringComparison.OrdinalIgnoreCase))
+        try
         {
-            return postType!.ToLowerInvariant();
+            var postType = ContentTypeCatalog.Normalize(request.PostType, request.Title);
+            var properties = ContentTypeCatalog.NormalizeProperties(postType, request.Properties);
+            return new NormalizedPost(postType, properties, null);
         }
-
-        return string.IsNullOrWhiteSpace(title) ? "note" : "article";
+        catch (InvalidOperationException ex)
+        {
+            return new NormalizedPost(null, null, ex.Message);
+        }
     }
 
     public record SavePostRequest(
@@ -172,7 +203,12 @@ public class PostsController : ControllerBase
         IReadOnlyList<string>? Categories,
         string? Slug,
         string? PostType,
-        DateTimeOffset? RequestedPublishedUtc);
+        DateTimeOffset? RequestedPublishedUtc,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? Properties = null);
 
     private record ApiError(string Message);
+    private record NormalizedPost(
+        string? PostType,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? Properties,
+        string? Error);
 }
