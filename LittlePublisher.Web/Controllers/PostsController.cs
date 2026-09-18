@@ -132,7 +132,7 @@ public class PostsController : ControllerBase
         var validation = ContentTypeCatalog.Validate(
             storedPost.PostType,
             storedPost.MicropubProperties,
-            requireComplete: true);
+            requireComplete: true, content: storedPost.Content);
         if (validation is not null)
         {
             return BadRequest(new ApiError(validation));
@@ -179,7 +179,7 @@ public class PostsController : ControllerBase
             return "A post requires content or a title.";
         }
 
-        return ContentTypeCatalog.Validate(postType, properties, requireComplete);
+        return ContentTypeCatalog.Validate(postType, properties, requireComplete, request.Content);
     }
 
     private static NormalizedPost Normalize(SavePostRequest request)

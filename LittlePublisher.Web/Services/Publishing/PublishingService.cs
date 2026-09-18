@@ -91,6 +91,7 @@ public class PublishingService : IPublishingService
 
         return request.PostType.ToLowerInvariant() switch
         {
+            "book-review" => request.ExistingBookUrl ?? $"{baseUrl}/books/{request.Slug}/",
             "article" => $"{baseUrl}/{request.Slug}/",
             "note" => $"{baseUrl}/note/{request.PublishedUtc:yyyy-MM}/{request.Slug}/",
             _ => $"{baseUrl}/activity/{request.PublishedUtc:yyyy/MM}/{request.Slug}/"
@@ -103,6 +104,7 @@ public class PublishingService : IPublishingService
 
         return request.PostType.ToLowerInvariant() switch
         {
+            "book-review" => request.ExistingBookPath ?? $"{contentPath}/books/{request.Slug}/index.md",
             "article" => $"{contentPath}/post/{request.PublishedUtc:yyyy}/{request.Slug}.md",
             "note" => $"{contentPath}/note/{request.PublishedUtc:yyyy-MM}/{request.Slug}.md",
             _ => $"{contentPath}/activity/{request.PublishedUtc:yyyy-MM}/{request.Slug}.md"

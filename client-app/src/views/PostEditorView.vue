@@ -3,8 +3,10 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router'
 import { adminService } from '@/services/adminService'
 import { contentTypes, readError, safeUrl } from '@/utils/contentTypes'
+import { conversationTemplate, parseConversations } from '@/utils/conversations'
 import { markdownPreview } from '@/utils/markdownPreview'
 import { registerEditorLeave } from '@/utils/editorNavigation'
+import BookSearch from '@/components/BookSearch.vue'
 import MediaUpload from '@/components/MediaUpload.vue'
 import type { Post, PostType, SavePostRequest } from '@/types/admin'
 const route = useRoute(),
@@ -52,6 +54,7 @@ const statusLabel = computed(() =>
         : 'Published'
       : 'Draft',
 )
+const conversationError = computed(() => parseConversations(form.content).error)
 const readingPreview = computed(() => markdownPreview(form.content))
 const mediaUrl = computed(() =>
   config.value.media ? safeUrl(form.properties[config.value.media]?.[0]) : undefined,
@@ -84,6 +87,10 @@ function property(key: string) {
 }
 function setProperty(key: string, value: string) {
   form.properties[key] = [value, ...(form.properties[key]?.slice(1) || [])]
+}
+function selectBook(properties: Record<string, string[]>) {
+  Object.assign(form.properties, properties)
+  if (!form.title?.trim()) form.title = `${properties['book-title']?.[0]} — review`
 }
 function changeType(event: Event) {
   propertyDrafts[form.postType] = structuredClone(request().properties)
@@ -147,8 +154,24 @@ async function load(id?: string) {
   }
 }
 function validate(complete: boolean) {
+  if (complete && conversationError.value) return conversationError.value
   if (!form.title?.trim() && !form.content.trim())
     return 'Add a title or some writing before saving.'
+  if (form.postType === 'book-review') {
+    if (complete && !form.content.trim()) return 'Write your review before publishing.'
+    if (property('rating') && !/^[1-5]$/.test(property('rating')))
+      return 'Choose a whole-star rating from 1 to 5.'
+    const cover = property('book-cover')
+    if (
+      cover &&
+      !/^https:\/\//.test(cover) &&
+      (cover.includes(':') ||
+        cover.includes('\\') ||
+        cover.startsWith('//') ||
+        cover.split('/').some((p) => p === '..' || p === '.'))
+    )
+      return 'Use an HTTPS cover URL, site-relative path, or bundle resource.'
+  }
   for (const field of config.value.fields) {
     const value = property(field.key).trim()
     if (complete && field.required && !value)
@@ -219,8 +242,26 @@ async function resize() {
   await nextTick()
   for (const el of [titleInput.value, bodyInput.value]) {
     if (el) {
-      el.style.height = 'auto'
-      el.style.height = `${el.scrollHeight}px`
+      // Measure outside the document flow so a long post never collapses while
+      // typing. Collapsing the live textarea clamps the page's scroll position.
+      const measuring = el.cloneNode(false) as HTMLTextAreaElement
+      measuring.value = el.value
+      measuring.removeAttribute('id')
+      measuring.removeAttribute('name')
+      measuring.setAttribute('aria-hidden', 'true')
+      measuring.tabIndex = -1
+      Object.assign(measuring.style, {
+        position: 'absolute',
+        top: '0',
+        left: '0',
+        height: 'auto',
+        width: `${el.clientWidth}px`,
+        visibility: 'hidden',
+        pointerEvents: 'none',
+      })
+      el.after(measuring)
+      el.style.height = `${measuring.scrollHeight}px`
+      measuring.remove()
     }
   }
 }
@@ -233,6 +274,7 @@ function insert(kind: string) {
   const text =
     (
       {
+        conversation: `\n\n${conversationTemplate.replace('Your question here.', selected || 'Your question here.')}\n\n`,
         bold: `**${selected || 'bold text'}**`,
         italic: `*${selected || 'italic text'}*`,
         heading: `\n## ${selected || 'Heading'}\n`,
@@ -339,6 +381,22 @@ onBeforeUnmount(() => {
             rows="1"
           />
           <div v-if="config.fields.length" class="type-context">
+            <template v-if="form.postType === 'book-review'">
+              <BookSearch
+                :key="String(route.params.id || 'new')"
+                :disabled="busy"
+                @select="selectBook"
+              />
+              <MediaUpload
+                kind="photo"
+                accept="image/jpeg,image/png,image/gif,image/webp"
+                :model-value="property('book-cover')"
+                :alt="property('book-cover-alt')"
+                :disabled="saving || publishing"
+                @busy="uploading = $event"
+                @update:model-value="setProperty('book-cover', $event)"
+              />
+            </template>
             <MediaUpload
               v-if="config.media"
               :key="form.postType"
@@ -364,14 +422,25 @@ onBeforeUnmount(() => {
               <div v-else class="property-field">
                 <label :for="`property-${field.key}`"
                   >{{ field.label }} <small v-if="field.required">required to publish</small></label
+                ><select
+                  v-if="field.key === 'rating'"
+                  :id="`property-${field.key}`"
+                  :value="property(field.key)"
+                  @change="setProperty(field.key, ($event.target as HTMLSelectElement).value)"
+                >
+                  <option value="">Choose a rating</option>
+                  <option v-for="stars in 5" :key="stars" :value="String(stars)">
+                    {{ '★'.repeat(stars) }} — {{ stars }} / 5
+                  </option></select
                 ><textarea
-                  v-if="field.key === 'alt'"
+                  v-else-if="field.key === 'alt' || field.key === 'book-cover-alt'"
                   :id="`property-${field.key}`"
                   :value="property(field.key)"
                   rows="2"
                   @input="setProperty(field.key, ($event.target as HTMLTextAreaElement).value)"
                 /><input
                   v-else
+                  :type="field.key === 'date-read' ? 'date' : 'text'"
                   :id="`property-${field.key}`"
                   :value="property(field.key)"
                   :placeholder="
@@ -399,7 +468,15 @@ onBeforeUnmount(() => {
             </button>
             <div v-if="formatOpen" class="format-menu">
               <button
-                v-for="kind in ['bold', 'italic', 'heading', 'link', 'image', 'quote']"
+                v-for="kind in [
+                  'bold',
+                  'italic',
+                  'heading',
+                  'link',
+                  'image',
+                  'quote',
+                  'conversation',
+                ]"
                 :key="kind"
                 @click="insert(kind)"
               >
@@ -418,6 +495,11 @@ onBeforeUnmount(() => {
         <article v-else class="reading-preview">
           <h1>{{ form.title }}</h1>
           <img
+            v-if="form.postType === 'book-review' && safeUrl(property('book-cover'))"
+            :src="safeUrl(property('book-cover'))"
+            :alt="property('book-cover-alt') || `Cover of ${property('book-title')}`"
+          />
+          <img
             v-if="form.postType === 'photo' && mediaUrl"
             :src="mediaUrl"
             :alt="property('alt')"
@@ -426,6 +508,7 @@ onBeforeUnmount(() => {
             :src="mediaUrl"
             controls
           />
+          <p v-if="conversationError" class="writer-error" role="alert">{{ conversationError }}</p>
           <div v-html="readingPreview" />
           <dl v-if="config.fields.length" class="preview-properties">
             <template v-for="field in config.fields" :key="field.key"
@@ -535,6 +618,13 @@ onBeforeUnmount(() => {
       </div>
       <p>Use the + beside your writing to insert formatting.</p>
       <pre>## Heading\n**bold** · *italic*\n[label](https://example.com)\n&gt; A quotation</pre>
+      <p>
+        Choose conversation from the + menu to insert an exchange. Each message needs a role: human,
+        ai, or system. Add optional name and model parameters to identify the speaker, and title or
+        note parameters to the conversation. Keep each shortcode on its own line and close every
+        message and conversation.
+      </p>
+      <pre>{{ conversationTemplate }}</pre>
       <p class="field-help">
         The reading preview supports basic Markdown. Your original source is preserved for
         publishing.

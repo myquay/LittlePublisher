@@ -128,7 +128,20 @@ public class MicropubController : ControllerBase
             return BadRequest(new MicropubError("invalid_request", "A Micropub entry requires content or name."));
         }
 
-        var content = entry.Content ?? entry.Name ?? string.Empty;
+        var postType = ResolvePostType(entry);
+        var content = entry.Content ?? (postType == "book-review" ? string.Empty : entry.Name) ?? string.Empty;
+        var createProperties = entry.Properties;
+        if (postType == "book-review")
+        {
+            try
+            {
+                createProperties = NormalizeBookProperties(createProperties);
+                var validation = ContentTypeCatalog.Validate(postType, createProperties,
+                    !string.Equals(entry.PostStatus, "draft", StringComparison.OrdinalIgnoreCase), content);
+                if (validation is not null) return BadRequest(new MicropubError("invalid_request", validation));
+            }
+            catch (InvalidOperationException ex) { return BadRequest(new MicropubError("invalid_request", ex.Message)); }
+        }
         PublishJobRecord? job = null;
         PostRecord? post = null;
 
@@ -141,9 +154,9 @@ public class MicropubController : ControllerBase
                     Summary: entry.Summary,
                     Categories: entry.Categories,
                     Slug: PublishingService.BuildSlug(entry.Name, BuildSlugContent(entry, content)),
-                    PostType: ResolvePostType(entry),
+                    PostType: postType,
                     RequestedPublishedUtc: entry.Published,
-                    Properties: entry.Properties),
+                    Properties: createProperties),
                 cancellationToken);
 
             job = await _storage.CreatePublishJobAsync(
@@ -199,7 +212,8 @@ public class MicropubController : ControllerBase
         {
             "name", "content", "summary", "category", "published", "post-type",
             "photo", "alt", "location", "in-reply-to", "like-of", "repost-of",
-            "bookmark-of", "url", "feed", "start", "end", "audio", "video"
+            "bookmark-of", "url", "feed", "start", "end", "audio", "video",
+            "book-title", "book-author", "book-cover", "book-cover-alt", "book-isbn", "book-url", "rating", "date-read"
         };
         var changedProperties = entry.ProvidedProperties
             .Concat(entry.AddProperties.Keys)
@@ -214,9 +228,7 @@ public class MicropubController : ControllerBase
                     : entry.AddProperties.TryGetValue("category", out var addedCategories)
                         ? post.Categories.Concat(addedCategories).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
                         : post.Categories;
-            post = await _postStorage.UpdatePostAsync(
-                post.Id,
-                new PostUpdate(
+            var update = new PostUpdate(
                     Title: entry.DeleteProperties.Contains("name")
                         ? null
                         : entry.ProvidedProperties.Contains("name") ? entry.Name : post.Title,
@@ -240,9 +252,19 @@ public class MicropubController : ControllerBase
                         entry.Properties,
                         entry.ProvidedProperties,
                         entry.AddProperties,
-                        entry.DeleteProperties)),
-                post.ETag,
-                cancellationToken);
+                        entry.DeleteProperties));
+            if (update.PostType == "book-review")
+            {
+                try
+                {
+                    update = update with { Properties = NormalizeBookProperties(update.Properties!) };
+                    var validation = ContentTypeCatalog.Validate(update.PostType, update.Properties!,
+                        string.Equals(entry.PostStatus, "published", StringComparison.OrdinalIgnoreCase), update.Content);
+                    if (validation is not null) return BadRequest(new MicropubError("invalid_request", validation));
+                }
+                catch (InvalidOperationException ex) { return BadRequest(new MicropubError("invalid_request", ex.Message)); }
+            }
+            post = await _postStorage.UpdatePostAsync(post.Id, update, post.ETag, cancellationToken);
         }
 
         if (string.Equals(entry.PostStatus, "published", StringComparison.OrdinalIgnoreCase))
@@ -752,6 +774,12 @@ public class MicropubController : ControllerBase
     private static bool IsRelationshipProperty(string property) =>
         property is "in-reply-to" or "like-of" or "repost-of" or "bookmark-of";
 
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>> NormalizeBookProperties(
+        IReadOnlyDictionary<string, IReadOnlyList<string>> properties) =>
+        ContentTypeCatalog.NormalizeProperties("book-review", properties
+            .Where(p => !string.Equals(p.Key, "post-type", StringComparison.OrdinalIgnoreCase))
+            .ToDictionary(p => p.Key, p => p.Value, StringComparer.OrdinalIgnoreCase));
+
     private static IReadOnlyDictionary<string, IReadOnlyList<string>> MergeProperties(
         IReadOnlyDictionary<string, IReadOnlyList<string>> current,
         IReadOnlyDictionary<string, IReadOnlyList<string>> replacement,
@@ -765,7 +793,8 @@ public class MicropubController : ControllerBase
             foreach (var typeSpecific in new[]
             {
                 "photo", "alt", "location", "in-reply-to", "like-of", "repost-of",
-                "bookmark-of", "url", "feed", "start", "end", "audio", "video"
+                "bookmark-of", "url", "feed", "start", "end", "audio", "video",
+                "book-title", "book-author", "book-cover", "book-cover-alt", "book-isbn", "book-url", "rating", "date-read"
             })
             {
                 if (!replacement.ContainsKey(typeSpecific))

@@ -258,6 +258,47 @@ public class MicropubControllerTests
         Assert.Contains("Unsupported Micropub query", JsonSerializer.Serialize(result.Value, JsonOptions));
     }
 
+
+    [Fact]
+    public async Task BookReview_CreateAndUpdatePreserveMetadata()
+    {
+        var publishing = new CapturingPublishingService();
+        var storage = new CapturingPublisherStorage();
+        var controller = CreateController(publishing: publishing, storage: storage);
+        SetUser(controller, me: "https://example.com/", scopes: "create update");
+        SetJsonBody(controller, """
+            {"type":["h-entry"],"properties":{"post-type":["book-review"],"name":["My review"],
+            "content":["My words"],"book-title":["A book"],"book-author":["Writer"],
+            "book-cover":["https://covers.openlibrary.org/b/id/123-L.jpg"],"rating":["4"]}}
+            """);
+        Assert.IsType<CreatedResult>(await controller.Post(CancellationToken.None));
+        Assert.Equal("book-review", publishing.Request!.PostType);
+        Assert.False(publishing.Request.Properties!.ContainsKey("post-type"));
+        Assert.Equal(["A book"], publishing.Request.Properties["book-title"]);
+        SetJsonBody(controller, """
+            {"action":"update","url":"https://publisher.example/micropub/posts/post-1",
+             "replace":{"rating":["5"],"book-title":["Corrected title"]}}
+            """);
+        Assert.IsType<OkResult>(await controller.Post(CancellationToken.None));
+        var updated = await storage.GetPostAsync("post-1", default);
+        Assert.Equal(["5"], updated!.Properties!["rating"]);
+        Assert.Equal(["Corrected title"], updated.Properties["book-title"]);
+    }
+
+    [Fact]
+    public async Task BookReview_RejectsPublicationWithoutReviewText()
+    {
+        var storage = new CapturingPublisherStorage();
+        var controller = CreateController(storage: storage);
+        SetUser(controller, me: "https://example.com/", scopes: "create");
+        SetJsonBody(controller, """
+            {"type":["h-entry"],"properties":{"post-type":["book-review"],"name":["Only a title"],
+            "book-title":["A book"],"book-author":["Writer"],"book-cover":["/cover.jpg"],"rating":["4"]}}
+            """);
+        Assert.IsType<BadRequestObjectResult>(await controller.Post(CancellationToken.None));
+        Assert.Null(storage.SavedItem);
+    }
+
     private static MicropubController CreateController(
         AppConfiguration? config = null,
         IPublishingService? publishing = null,

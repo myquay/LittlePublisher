@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import BookSearch from '@/components/BookSearch.vue'
 import PostEditorView from './PostEditorView.vue'
 import { adminService } from '@/services/adminService'
 import type { Post } from '@/types/admin'
@@ -122,6 +123,98 @@ describe('PostEditorView photo editing', () => {
     await flushPromises()
     expect(w.text()).toContain('Conflict: reload the post.')
     expect(adminService.publishPost).not.toHaveBeenCalled()
+    w.unmount()
+  })
+  it('saves a manually entered review and keeps rating and review text when selecting a book', async () => {
+    const w = mount(PostEditorView)
+    await w.get('select').setValue('book-review')
+    await w.get('[aria-label="Post title"]').setValue('My review')
+    await w.get('[aria-label="Post content in Markdown"]').setValue('My own review')
+    await w.get('#property-book-title').setValue('Manual book')
+    await w.get('#property-book-author').setValue('Writer')
+    await w.get('#property-rating').setValue('4')
+    await w.get('#property-date-read').setValue('2026-09-17')
+    await w.get('#property-book-cover').setValue('/media/cover.jpg')
+    await w
+      .findAll('button')
+      .find((b) => b.text().includes('Save draft'))!
+      .trigger('click')
+    await flushPromises()
+    expect(adminService.createPost).toHaveBeenCalledWith(
+      expect.objectContaining({
+        postType: 'book-review',
+        content: 'My own review',
+        properties: expect.objectContaining({
+          'book-title': ['Manual book'],
+          'book-author': ['Writer'],
+          rating: ['4'],
+          'date-read': ['2026-09-17'],
+        }),
+      }),
+    )
+    w.unmount()
+  })
+  it('lookup fills metadata without overwriting review text or rating', async () => {
+    const w = mount(PostEditorView)
+    await w.get('select').setValue('book-review')
+    await w.get('[aria-label="Post content in Markdown"]').setValue('My thoughts')
+    await w.get('#property-rating').setValue('5')
+    w.getComponent(BookSearch).vm.$emit('select', {
+      'book-title': ['Found book'],
+      'book-author': ['Author'],
+    })
+    await flushPromises()
+    expect((w.get('#property-book-title').element as HTMLInputElement).value).toBe('Found book')
+    expect((w.get('#property-rating').element as HTMLSelectElement).value).toBe('5')
+    expect(
+      (w.get('[aria-label="Post content in Markdown"]').element as HTMLTextAreaElement).value,
+    ).toBe('My thoughts')
+    w.unmount()
+  })
+  it('inserts a conversation, previews it, and saves its original source', async () => {
+    const w = mount(PostEditorView)
+    await w.get('[aria-label="Insert Markdown formatting"]').trigger('click')
+    await w
+      .findAll('button')
+      .find((b) => b.text() === 'conversation')!
+      .trigger('click')
+    const source = (w.get('[aria-label="Post content in Markdown"]').element as HTMLTextAreaElement)
+      .value
+    expect(source).toContain('{{< message role="human" >}}')
+    await w
+      .findAll('button')
+      .find((b) => b.text() === 'Preview')!
+      .trigger('click')
+    expect(w.findAll('.conversation-message')).toHaveLength(2)
+    await w
+      .findAll('button')
+      .find((b) => b.text().includes('Save draft'))!
+      .trigger('click')
+    await flushPromises()
+    expect(adminService.createPost).toHaveBeenCalledWith(
+      expect.objectContaining({ content: source }),
+    )
+    w.unmount()
+  })
+  it('allows unfinished drafts but blocks publishing malformed conversations', async () => {
+    const w = mount(PostEditorView)
+    const source = '{{< conversation >}}'
+    await w.get('[aria-label="Post content in Markdown"]').setValue(source)
+    await w
+      .findAll('button')
+      .find((b) => b.text() === 'Publish ↗')!
+      .trigger('click')
+    expect(w.text()).toContain('Missing closing conversation tag')
+    expect(w.get('[aria-labelledby="review-title"]').attributes('open')).toBeUndefined()
+    expect(adminService.publishPost).not.toHaveBeenCalled()
+    await w
+      .findAll('button')
+      .find((b) => b.text().includes('Save draft'))!
+      .trigger('click')
+    await flushPromises()
+    expect(adminService.createPost).toHaveBeenCalledWith(
+      expect.objectContaining({ content: source }),
+    )
     w.unmount()
   })
 })

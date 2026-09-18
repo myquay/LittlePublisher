@@ -42,6 +42,36 @@ Each import path must be inside `App:GitHub:ContentPath`; section names and
 repository layout remain deployment-specific rather than being built into
 LittlePublisher.
 
+## Book reviews
+
+Choose **Book review** in the editor. Search Open Library by title/author or ISBN,
+select **Use this book**, and edit any returned fields. Manual entry works without
+search. Title searches describe a work and leave ISBN blank; ISBN searches retrieve
+that edition's metadata. Your own rating and review text are never filled from a
+provider. Covers can use an HTTPS URL or the existing photo upload control.
+
+Publication requires a book title, author, cover, review text, and a whole-star
+rating from 1 to 5. Date finished, ISBN, book URL, and cover alternative text are
+optional. Incomplete drafts can be saved. New reviews publish to
+`<ContentPath>/books/<slug>/index.md` and `/books/<slug>/`, using the blog's nested
+`book` front matter and numeric `rating`. Imported reviews retain their existing
+path, public URL, and relative cover reference on republish. Include the books
+section in `App:GitHub:ImportPaths` if import filters are configured.
+
+Open Library lookup needs no API key. The authenticated `/api/books/search?q=...`
+endpoint caches up to 200 search/document entries for six hours and limits upstream requests to
+one per second per application instance. Search failure leaves manual entry
+available. Open Library covers use hosted URLs in accordance with its
+[cover guidelines](https://openlibrary.org/dev/docs/api/covers); publication does
+not depend on metadata lookup, although hosted image display depends on the cover
+service. Uploads use the existing media publication path.
+
+Micropub clients can explicitly send `post-type=book-review` with the
+LittlePublisher extension properties `book-title`, `book-author`, `book-cover`,
+`book-cover-alt`, `book-isbn`, `book-url`, `rating`, and `date-read`. These are scalar
+string-array properties; `date-read` uses `YYYY-MM-DD`. Create, replace, delete,
+and source queries use these fields. Nested `h-review` input is not supported.
+
 ## Prerequisites
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
@@ -194,3 +224,9 @@ Store the same shared secret in the site repository's production environment as 
 ## License
 
 MIT
+
+### Conversations
+
+Use **+ → conversation** in the editor to insert the blog's `{{< conversation >}}` / `{{< message role="human" >}}` format. Preview shows ordered turns with speaker labels and optional `name`, `model`, conversation `title`, and `note` metadata. Roles are `human`, `ai`, and `system`; each shortcode belongs on its own line and needs a closing tag. Message bodies use Markdown. The reading preview supports the editor's basic Markdown subset; Hugo renders the full Markdown on the blog.
+
+Unfinished conversations can be saved as drafts. The editor checks conversation structure before opening the publishing review, and preview explains any errors with line numbers. Publishing preserves the shortcode source for Hugo.

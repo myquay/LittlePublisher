@@ -67,6 +67,7 @@ public class MarkdownPublishedItemParser
         IReadOnlyDictionary<string, FrontMatterValue> frontMatter,
         string? title)
     {
+        if (ReadString(frontMatter, "type") == "book-review") return "book-review";
         if (ReadString(frontMatter, "activity_type") is { } activityType)
         {
             if (string.Equals(activityType, "status", StringComparison.OrdinalIgnoreCase))
@@ -95,6 +96,9 @@ public class MarkdownPublishedItemParser
     {
         IReadOnlyDictionary<string, string> mappings = postType switch
         {
+            "book-review" => Map(("book.title", "book-title"), ("book.author", "book-author"),
+                ("book.cover", "book-cover"), ("book.cover_alt", "book-cover-alt"),
+                ("book.isbn", "book-isbn"), ("book.url", "book-url"), ("rating", "rating"), ("date_read", "date-read")),
             "photo" => Map(("photo", "photo"), ("alt", "alt"), ("photo_location", "location")),
             "reply" => Map(("in_reply_to", "in-reply-to"), ("reply_to_title", "reply-to-title")),
             "like" => Map(("like_of", "like-of")),
@@ -124,48 +128,41 @@ public class MarkdownPublishedItemParser
 
     private static Dictionary<string, FrontMatterValue> ParseFrontMatter(IReadOnlyList<string> lines)
     {
-        var values = new Dictionary<string, FrontMatterValue>(StringComparer.OrdinalIgnoreCase);
-        string? currentListKey = null;
-
-        foreach (var line in lines)
+        try
         {
-            if (string.IsNullOrWhiteSpace(line))
+            var yaml = new YamlDotNet.RepresentationModel.YamlStream();
+            yaml.Load(new StringReader(string.Join("\n", lines)));
+            if (yaml.Documents.Count != 1 || yaml.Documents[0].RootNode is not YamlDotNet.RepresentationModel.YamlMappingNode mapping)
+                throw new InvalidOperationException("Front matter must be a YAML mapping.");
+            var values = new Dictionary<string, FrontMatterValue>(StringComparer.OrdinalIgnoreCase);
+            void Read(YamlDotNet.RepresentationModel.YamlMappingNode node, string prefix)
             {
-                continue;
+                foreach (var pair in node.Children)
+                {
+                    if (pair.Key is not YamlDotNet.RepresentationModel.YamlScalarNode key) continue;
+                    var name = prefix + key.Value;
+                    switch (pair.Value)
+                    {
+                        case YamlDotNet.RepresentationModel.YamlScalarNode scalar:
+                            values[name] = new FrontMatterValue(scalar.Value, []);
+                            break;
+                        case YamlDotNet.RepresentationModel.YamlSequenceNode sequence:
+                            values[name] = new FrontMatterValue(null, sequence.Children
+                                .OfType<YamlDotNet.RepresentationModel.YamlScalarNode>().Select(x => x.Value ?? "").ToList());
+                            break;
+                        case YamlDotNet.RepresentationModel.YamlMappingNode child when prefix == "" && key.Value == "book":
+                            Read(child, "book.");
+                            break;
+                    }
+                }
             }
-
-            var trimmed = line.Trim();
-
-            if (currentListKey is not null && trimmed.StartsWith("- ", StringComparison.Ordinal))
-            {
-                values[currentListKey].Items.Add(Unquote(trimmed[2..].Trim()));
-                continue;
-            }
-
-            var separatorIndex = line.IndexOf(':', StringComparison.Ordinal);
-
-            if (separatorIndex <= 0)
-            {
-                currentListKey = null;
-                continue;
-            }
-
-            var key = line[..separatorIndex].Trim();
-            var value = line[(separatorIndex + 1)..].Trim();
-
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                values[key] = new FrontMatterValue(null, []);
-                currentListKey = key;
-            }
-            else
-            {
-                values[key] = new FrontMatterValue(Unquote(value), []);
-                currentListKey = null;
-            }
+            Read(mapping, "");
+            return values;
         }
-
-        return values;
+        catch (YamlDotNet.Core.YamlException ex)
+        {
+            throw new InvalidOperationException("Invalid YAML front matter.", ex);
+        }
     }
 
     private DateTimeOffset? ReadPublishedUtc(IReadOnlyDictionary<string, FrontMatterValue> frontMatter)
@@ -258,6 +255,8 @@ public class MarkdownPublishedItemParser
             return $"activity/{parts[1].Replace('-', '/')}/{Path.GetFileNameWithoutExtension(parts[2])}";
         }
 
+        if (contentRelativePath.EndsWith("/index.md", StringComparison.OrdinalIgnoreCase))
+            return contentRelativePath[..^9];
         return Path.ChangeExtension(contentRelativePath, null);
     }
 
@@ -333,21 +332,6 @@ public class MarkdownPublishedItemParser
     {
         var value = ReadString(frontMatter, key);
         return bool.TryParse(value, out var result) ? result : null;
-    }
-
-    private static string Unquote(string value)
-    {
-        if (value.Length >= 2 && value[0] == '\'' && value[^1] == '\'')
-        {
-            return value[1..^1].Replace("''", "'", StringComparison.Ordinal);
-        }
-
-        if (value.Length >= 2 && value[0] == '"' && value[^1] == '"')
-        {
-            return value[1..^1].Replace("\\\"", "\"", StringComparison.Ordinal);
-        }
-
-        return value;
     }
 
     private sealed record FrontMatterValue(string? Value, List<string> Items);

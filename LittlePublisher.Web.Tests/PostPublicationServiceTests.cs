@@ -52,6 +52,22 @@ public class PostPublicationServiceTests
         Assert.Equal(["/media/snow.jpg"], publishing.Request.Properties!["photo"]);
     }
 
+
+    [Fact]
+    public async Task PublishAsync_BookReviewPreservesImportedBundlePathAndPublicUrl()
+    {
+        var post = BuildPhotoPost() with {
+            PostType = "book-review", Properties = BookReviewTests.Properties(),
+            FilePath = "content/books/original/index.md", PublishedUrl = "https://example.com/original/",
+            Slug = "edited-slug"
+        };
+        var storage = new PublicationStorage { Post = post };
+        var publishing = new PublicationGateway();
+        await new PostPublicationService(storage, publishing, Config()).PublishAsync(post.Id, default);
+        Assert.Equal(post.FilePath, publishing.Request!.ExistingBookPath);
+        Assert.Equal(post.PublishedUrl, publishing.Request.ExistingBookUrl);
+    }
+
     private sealed class PublicationGateway : IPublishingService
     {
         public PublishCreateRequest? Request { get; private set; }

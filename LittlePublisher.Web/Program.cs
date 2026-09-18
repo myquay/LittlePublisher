@@ -125,6 +125,14 @@ builder.Services.AddSingleton<IPostPublicationService, PostPublicationService>()
 builder.Services.AddSingleton<MarkdownPublishedItemParser>();
 builder.Services.AddSingleton<IContentImportService, ContentImportService>();
 builder.Services.AddHttpClient();
+builder.Services.AddSingleton<OpenLibraryService>();
+builder.Services.AddHttpClient("OpenLibrary", client =>
+{
+    client.BaseAddress = new Uri("https://openlibrary.org/");
+    client.Timeout = TimeSpan.FromSeconds(15);
+    client.MaxResponseContentBufferSize = 2 * 1024 * 1024;
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("LittlePublisher/1.0");
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddSingleton<IWebmentionStorage, TableStorageWebmentionStorage>();
 builder.Services.AddSingleton<IWebmentionQueue, AzureWebmentionQueue>();
 builder.Services.AddSingleton<SafeWebFetcher>();
@@ -140,6 +148,9 @@ builder.Services.AddHostedService<WebmentionWorker>();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("books", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 20, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
     options.AddPolicy("webmention", context => RateLimitPartition.GetFixedWindowLimiter(
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));

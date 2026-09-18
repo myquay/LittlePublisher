@@ -80,6 +80,7 @@ export interface SavePostRequest {
 }
 
 export type PostType =
+  | 'book-review'
   | 'article'
   | 'note'
   | 'photo'

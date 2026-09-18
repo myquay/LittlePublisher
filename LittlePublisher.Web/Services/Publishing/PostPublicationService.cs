@@ -20,7 +20,7 @@ public class PostPublicationService : IPostPublicationService
     {
         var post = await _storage.GetPostAsync(postId, cancellationToken) ??
             throw new InvalidOperationException($"Post '{postId}' was not found.");
-        var validation = ContentTypeCatalog.Validate(post.PostType, post.MicropubProperties, requireComplete: true);
+        var validation = ContentTypeCatalog.Validate(post.PostType, post.MicropubProperties, requireComplete: true, content: post.Content);
         if (validation is not null)
         {
             throw new InvalidOperationException(validation);
@@ -49,7 +49,9 @@ public class PostPublicationService : IPostPublicationService
                     PublishedUtc: publishedUtc,
                     Slug: post.Slug,
                     PostType: post.PostType,
-                    Properties: post.MicropubProperties),
+                    Properties: post.MicropubProperties,
+                    ExistingBookPath: post.PostType == "book-review" ? post.FilePath ?? post.SourceRepositoryPath : null,
+                    ExistingBookUrl: post.PostType == "book-review" ? post.PublishedUrl : null),
                 cancellationToken);
 
             return await _storage.MarkPublishedAsync(
@@ -100,6 +102,7 @@ public class PostPublicationService : IPostPublicationService
         var contentPath = _config.GitHub.ContentPath.Trim('/');
         return post.PostType.ToLowerInvariant() switch
         {
+            "book-review" => post.FilePath ?? post.SourceRepositoryPath ?? $"{contentPath}/books/{post.Slug}/index.md",
             "article" => $"{contentPath}/post/{publishedUtc:yyyy}/{post.Slug}.md",
             "note" => $"{contentPath}/note/{publishedUtc:yyyy-MM}/{post.Slug}.md",
             _ => $"{contentPath}/activity/{publishedUtc:yyyy-MM}/{post.Slug}.md"

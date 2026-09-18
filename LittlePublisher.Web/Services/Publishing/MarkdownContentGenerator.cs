@@ -9,10 +9,41 @@ public class MarkdownContentGenerator : IContentGenerator
             : request.PostType.ToLowerInvariant();
         return postType switch
         {
+            "book-review" => GenerateBookMarkdown(request, url),
             "article" => GeneratePostMarkdown(request),
             "note" => GenerateNoteMarkdown(request),
             _ => GenerateActivityMarkdown(request)
         };
+    }
+
+    private static string GenerateBookMarkdown(PublishCreateRequest request, string url)
+    {
+        var properties = ContentTypeCatalog.NormalizeProperties("book-review", request.Properties);
+        var error = ContentTypeCatalog.Validate("book-review", properties, true, request.Content);
+        if (error is not null) throw new InvalidOperationException(error);
+        string? Get(string key) => properties.TryGetValue(key, out var values) ? values.FirstOrDefault() : null;
+        static string Quote(string value) => System.Text.Json.JsonSerializer.Serialize(value,
+            new System.Text.Json.JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
+        var lines = new List<string>
+        {
+            "---", "type: book-review",
+            $"title: {Quote(request.Name ?? Get("book-title")! + " — review")}",
+            $"date: {request.PublishedUtc:yyyy-MM-ddTHH:mm:sszzz}",
+            $"url: {Quote(new Uri(url).AbsolutePath)}",
+            $"rating: {Get("rating")}", "book:"
+        };
+        foreach (var (property, field) in new[] { ("book-title", "title"), ("book-author", "author"),
+            ("book-cover", "cover"), ("book-cover-alt", "cover_alt"), ("book-isbn", "isbn"), ("book-url", "url") })
+            if (Get(property) is { } value) lines.Add($"  {field}: {Quote(value)}");
+        if (Get("date-read") is { } date) lines.Add($"date_read: {Quote(date)}");
+        if (!string.IsNullOrWhiteSpace(request.Summary)) lines.Add($"summary: {Quote(request.Summary)}");
+        if (request.Categories.Count > 0)
+        {
+            lines.Add("tags:");
+            lines.AddRange(request.Categories.Select(category => $"  - {Quote(category)}"));
+        }
+        lines.AddRange(["---", "", request.Content]);
+        return string.Join(Environment.NewLine, lines);
     }
 
     private static string GeneratePostMarkdown(PublishCreateRequest request)

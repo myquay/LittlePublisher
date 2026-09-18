@@ -16,6 +16,19 @@ const field = (key: string, label: string, required = false): ContentField => ({
   required,
 })
 export const contentTypes: Record<PostType, ContentType> = {
+  'book-review': {
+    label: 'Book review',
+    fields: [
+      field('book-title', 'Book title', true),
+      field('book-author', 'Author(s)', true),
+      field('rating', 'Rating', true),
+      field('date-read', 'Date finished'),
+      field('book-cover', 'Cover URL or bundle resource', true),
+      field('book-cover-alt', 'Cover alternative text'),
+      field('book-isbn', 'ISBN'),
+      field('book-url', 'Book URL'),
+    ],
+  },
   article: { label: 'Article', fields: [] },
   note: { label: 'Note', fields: [] },
   photo: {

@@ -5,6 +5,7 @@ public static class ContentTypeCatalog
     private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> AllowedProperties =
         new Dictionary<string, IReadOnlySet<string>>(StringComparer.OrdinalIgnoreCase)
         {
+            ["book-review"] = PropertySet("book-title", "book-author", "book-cover", "book-cover-alt", "book-isbn", "book-url", "rating", "date-read"),
             ["note"] = PropertySet(),
             ["article"] = PropertySet(),
             ["photo"] = PropertySet("photo", "alt", "location"),
@@ -24,6 +25,7 @@ public static class ContentTypeCatalog
 
     public static string DisplayName(string postType) => postType switch
     {
+        "book-review" => "Book review",
         "blogroll" => "Blogroll entry",
         _ => char.ToUpperInvariant(postType[0]) + postType[1..]
     };
@@ -84,7 +86,7 @@ public static class ContentTypeCatalog
     public static string? Validate(
         string postType,
         IReadOnlyDictionary<string, IReadOnlyList<string>> properties,
-        bool requireComplete)
+        bool requireComplete, string? content = null)
     {
         static string? First(IReadOnlyDictionary<string, IReadOnlyList<string>> source, string key) =>
             source.TryGetValue(key, out var values) ? values.FirstOrDefault() : null;
@@ -119,6 +121,25 @@ public static class ContentTypeCatalog
                 : $"Property '{urlProperty}' must be an HTTP(S) URL or a site-relative path.";
         }
 
+        if (postType == "book-review")
+        {
+            if (properties.Any(p => p.Value.Count != 1))
+                return "Book review fields must each contain a single value.";
+            if (First(properties, "rating") is { } rating &&
+                (rating.Length != 1 || rating[0] < '1' || rating[0] > '5'))
+                return "Rating must be a whole number from 1 to 5.";
+            if (First(properties, "date-read") is { } date && !DateOnly.TryParseExact(date, "yyyy-MM-dd",
+                System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out _))
+                return "Date read must be a valid date in YYYY-MM-DD format.";
+            if (First(properties, "book-url") is { } bookUrl &&
+                (!Uri.TryCreate(bookUrl, UriKind.Absolute, out var link) || link.Scheme is not ("https" or "http")))
+                return "Book URL must be an HTTP(S) URL.";
+            if (First(properties, "book-cover") is { } cover && !ValidBookCover(cover))
+                return "Book cover must be an HTTPS URL, a root-relative path, or a bundle resource path.";
+            if (requireComplete && string.IsNullOrWhiteSpace(content))
+                return "A book review requires review text before it can be published.";
+        }
+
         if (!requireComplete)
         {
             return null;
@@ -126,6 +147,7 @@ public static class ContentTypeCatalog
 
         var required = postType switch
         {
+            "book-review" => new[] { "book-title", "book-author", "book-cover", "rating" },
             "photo" => new[] { "photo", "alt" },
             "reply" => new[] { "in-reply-to" },
             "like" => new[] { "like-of" },
@@ -140,6 +162,14 @@ public static class ContentTypeCatalog
 
         var missing = required.FirstOrDefault(property => string.IsNullOrWhiteSpace(First(properties, property)));
         return missing is null ? null : $"A {postType} requires the '{missing}' property before it can be published.";
+    }
+
+    private static bool ValidBookCover(string value)
+    {
+        if (value.Contains('\\') || value.StartsWith("//", StringComparison.Ordinal)) return false;
+        if (Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == "https") return true;
+        return !value.Contains(':') && !value.Contains('?') && !value.Contains('#') &&
+            !value.Split('/').Any(segment => segment is "." or "..");
     }
 
     private static IReadOnlySet<string> PropertySet(params string[] properties) =>
