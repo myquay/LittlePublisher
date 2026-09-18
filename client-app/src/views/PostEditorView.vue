@@ -8,6 +8,7 @@ import { markdownPreview } from '@/utils/markdownPreview'
 import { registerEditorLeave } from '@/utils/editorNavigation'
 import BookSearch from '@/components/BookSearch.vue'
 import MediaUpload from '@/components/MediaUpload.vue'
+import { useMediaPreview } from '@/composables/useMediaPreview'
 import type { Post, PostType, SavePostRequest } from '@/types/admin'
 const route = useRoute(),
   router = useRouter()
@@ -25,6 +26,12 @@ let movingSaved = false
 const previewing = ref(false),
   focusMode = ref(false),
   formatOpen = ref(false)
+const imageDialog = ref<HTMLDialogElement>()
+const imageUrl = ref(''),
+  imageAlt = ref('')
+let imageSelection = { start: 0, end: 0 }
+let editingScroll = 0
+let editingSelection = { start: 0, end: 0 }
 const detailsDialog = ref<HTMLDialogElement>(),
   reviewDialog = ref<HTMLDialogElement>(),
   helpDialog = ref<HTMLDialogElement>()
@@ -55,9 +62,16 @@ const statusLabel = computed(() =>
       : 'Draft',
 )
 const conversationError = computed(() => parseConversations(form.content).error)
-const readingPreview = computed(() => markdownPreview(form.content))
+const previewSources = computed(() => [
+  ...Object.values(form.properties).flat(),
+  ...(form.content.match(
+    /https?:\/\/[^\s)<>"']+\/api\/media\/staged\/[a-f0-9]{32}\.(?:jpg|png|gif|webp)/g,
+  ) || []),
+])
+const staged = useMediaPreview(previewSources)
+const readingPreview = computed(() => markdownPreview(form.content, staged.resolve))
 const mediaUrl = computed(() =>
-  config.value.media ? safeUrl(form.properties[config.value.media]?.[0]) : undefined,
+  config.value.media ? staged.resolve(form.properties[config.value.media]?.[0] || '') : undefined,
 )
 function request(): SavePostRequest {
   return {
@@ -265,7 +279,57 @@ async function resize() {
     }
   }
 }
+async function togglePreview() {
+  const scroll = window.scrollY
+  const height = Math.max(1, document.documentElement.scrollHeight - window.innerHeight)
+  if (!previewing.value) {
+    editingScroll = scroll
+    editingSelection = {
+      start: bodyInput.value?.selectionStart || 0,
+      end: bodyInput.value?.selectionEnd || 0,
+    }
+  }
+  previewing.value = !previewing.value
+  formatOpen.value = false
+  await resize()
+  if (!previewing.value) {
+    bodyInput.value?.setSelectionRange(editingSelection.start, editingSelection.end)
+    bodyInput.value?.focus({ preventScroll: true })
+  }
+  window.scrollTo({
+    top: previewing.value
+      ? (scroll / height) * Math.max(0, document.documentElement.scrollHeight - window.innerHeight)
+      : editingScroll,
+    behavior: 'instant',
+  })
+}
+function openImage() {
+  const el = bodyInput.value
+  if (!el) return
+  imageSelection = { start: el.selectionStart, end: el.selectionEnd }
+  imageUrl.value = ''
+  imageAlt.value = form.content.slice(imageSelection.start, imageSelection.end)
+  formatOpen.value = false
+  imageDialog.value?.showModal()
+}
+function insertImage() {
+  const url = safeUrl(imageUrl.value)
+  if (!url || uploading.value) return
+  const alt = imageAlt.value.replace(/[\r\n]/g, ' ').replace(/[\\[\]]/g, '\\$&')
+  const text = `![${alt}](${url.replace(/\(/g, '%28').replace(/\)/g, '%29').replace(/\s/g, '%20')})`
+  const { start, end } = imageSelection
+  form.content = form.content.slice(0, start) + text + form.content.slice(end)
+  imageDialog.value?.close()
+  void nextTick(() => {
+    bodyInput.value?.setSelectionRange(start, start + text.length)
+    bodyInput.value?.focus({ preventScroll: true })
+  })
+}
 function insert(kind: string) {
+  if (kind === 'image') {
+    openImage()
+    return
+  }
   const el = bodyInput.value
   if (!el) return
   const start = el.selectionStart,
@@ -286,8 +350,10 @@ function insert(kind: string) {
   form.content = form.content.slice(0, start) + text + form.content.slice(end)
   formatOpen.value = false
   void nextTick(() => {
-    el.focus()
+    // Updating the value moves the caret to the end. Restore the selection
+    // before focusing, and keep the viewport where the writer left it.
     el.setSelectionRange(start, start + text.length)
+    el.focus({ preventScroll: true })
   })
 }
 function keys(event: KeyboardEvent) {
@@ -295,7 +361,7 @@ function keys(event: KeyboardEvent) {
     event.preventDefault()
     void save()
   }
-  if (event.key === 'Escape') {
+  if (event.key === 'Escape' && !document.querySelector('dialog[open]')) {
     focusMode.value = false
     formatOpen.value = false
   }
@@ -350,11 +416,7 @@ onBeforeUnmount(() => {
     </div>
     <template v-else>
       <nav class="editor-toolbar" aria-label="Editor tools">
-        <button :aria-pressed="focusMode" @click="focusMode = !focusMode">
-          {{ focusMode ? 'Exit focus' : 'Focus' }}</button
-        ><button :aria-pressed="previewing" @click="previewing = !previewing">
-          {{ previewing ? 'Edit' : 'Preview' }}</button
-        ><button class="writer-secondary" @click="detailsDialog?.showModal()">
+        <button class="writer-secondary" @click="detailsDialog?.showModal()">
           Post details ☷
         </button>
       </nav>
@@ -370,6 +432,47 @@ onBeforeUnmount(() => {
               {{ value.label }}
             </option></select
           ><span>/</span><span>{{ statusLabel }}</span>
+        </div>
+        <div class="format-helper">
+          <button
+            v-if="!previewing"
+            :disabled="busy"
+            class="format-toggle"
+            aria-label="Insert Markdown formatting"
+            :aria-expanded="formatOpen"
+            @click="formatOpen = !formatOpen"
+          >
+            ＋
+          </button>
+          <div v-if="formatOpen && !previewing" class="format-menu">
+            <button
+              v-for="kind in [
+                'bold',
+                'italic',
+                'heading',
+                'link',
+                'image',
+                'quote',
+                'conversation',
+              ]"
+              :key="kind"
+              :disabled="busy"
+              @click="insert(kind)"
+            >
+              {{ kind }}
+            </button>
+          </div>
+          <button
+            class="floating-preview"
+            :aria-pressed="previewing"
+            :disabled="uploading"
+            @click="togglePreview"
+          >
+            {{ previewing ? 'Edit' : 'Preview' }}
+          </button>
+          <button class="floating-focus" :aria-pressed="focusMode" @click="focusMode = !focusMode">
+            {{ focusMode ? 'Exit focus' : 'Focus' }}
+          </button>
         </div>
         <fieldset v-if="!previewing" :disabled="busy" class="writing-fields">
           <textarea
@@ -458,31 +561,6 @@ onBeforeUnmount(() => {
             >
           </div>
           <div class="writing-body-wrap">
-            <button
-              class="format-toggle"
-              aria-label="Insert Markdown formatting"
-              :aria-expanded="formatOpen"
-              @click="formatOpen = !formatOpen"
-            >
-              ＋
-            </button>
-            <div v-if="formatOpen" class="format-menu">
-              <button
-                v-for="kind in [
-                  'bold',
-                  'italic',
-                  'heading',
-                  'link',
-                  'image',
-                  'quote',
-                  'conversation',
-                ]"
-                :key="kind"
-                @click="insert(kind)"
-              >
-                {{ kind }}
-              </button>
-            </div>
             <textarea
               ref="bodyInput"
               v-model="form.content"
@@ -495,8 +573,8 @@ onBeforeUnmount(() => {
         <article v-else class="reading-preview">
           <h1>{{ form.title }}</h1>
           <img
-            v-if="form.postType === 'book-review' && safeUrl(property('book-cover'))"
-            :src="safeUrl(property('book-cover'))"
+            v-if="form.postType === 'book-review' && staged.resolve(property('book-cover'))"
+            :src="staged.resolve(property('book-cover'))"
             :alt="property('book-cover-alt') || `Cover of ${property('book-title')}`"
           />
           <img
@@ -519,6 +597,9 @@ onBeforeUnmount(() => {
             >
           </dl>
         </article>
+        <p v-if="staged.failed.value" role="alert" class="writer-error">
+          Could not load a staged image. Reopen the post to retry.
+        </p>
         <div class="writing-below">
           <button @click="helpDialog?.showModal()">M↓ Markdown supported ↗</button
           ><span>{{ words }} words · {{ Math.max(1, Math.ceil(words / 220)) }} min read</span>
@@ -554,6 +635,45 @@ onBeforeUnmount(() => {
         </div>
       </footer>
     </template>
+    <dialog
+      ref="imageDialog"
+      class="writer-dialog"
+      aria-labelledby="image-title"
+      @cancel="uploading && $event.preventDefault()"
+    >
+      <div class="dialog-heading">
+        <h2 id="image-title">Insert image</h2>
+        <button aria-label="Close image upload" :disabled="uploading" @click="imageDialog?.close()">
+          ×
+        </button>
+      </div>
+      <MediaUpload
+        v-if="imageDialog"
+        kind="photo"
+        accept="image/jpeg,image/png,image/gif,image/webp"
+        v-model="imageUrl"
+        :alt="imageAlt"
+        @busy="uploading = $event"
+      />
+      <label for="image-alt">Alternative text</label
+      ><input id="image-alt" v-model="imageAlt" placeholder="Describe the image" />
+      <details class="media-url">
+        <summary>Use an existing image URL</summary>
+        <input aria-label="Image URL" v-model="imageUrl" :disabled="uploading" type="url" />
+      </details>
+      <p class="field-help">Uploaded images stay private until you publish the post.</p>
+      <div class="dialog-actions">
+        <button class="writer-secondary" :disabled="uploading" @click="imageDialog?.close()">
+          Cancel</button
+        ><button
+          class="writer-primary"
+          :disabled="uploading || !safeUrl(imageUrl)"
+          @click="insertImage"
+        >
+          Insert image
+        </button>
+      </div>
+    </dialog>
     <dialog
       ref="detailsDialog"
       class="writer-dialog details-drawer"

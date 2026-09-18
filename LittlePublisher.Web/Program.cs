@@ -98,6 +98,15 @@ else if (config.ExternalToken.Enabled && config.ExternalToken.IsIntrospectionMod
 
 builder.Services.AddAuthorization(options =>
 {
+    options.AddPolicy("StagedMedia", policy =>
+    {
+        policy.AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme);
+        if (externalMicropubTokenConfigured) policy.AddAuthenticationSchemes(externalMicropubTokenScheme);
+        policy.RequireAuthenticatedUser();
+        policy.RequireAssertion(context => string.Equals(
+            (context.User.FindFirst(AspNet.Security.IndieAuth.Infrastructure.IndieAuthClaims.ME)?.Value ?? context.User.FindFirst("me")?.Value ?? context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value)?.TrimEnd('/'),
+            config.Website.Url.TrimEnd('/'), StringComparison.OrdinalIgnoreCase));
+    });
     options.AddPolicy("MicropubToken", policy =>
     {
         if (externalMicropubTokenConfigured)
@@ -119,6 +128,7 @@ builder.Services.AddSingleton<IPublisherStorage>(services => services.GetRequire
 builder.Services.AddSingleton<IPostStorage>(services => services.GetRequiredService<TableStoragePublisherStorage>());
 builder.Services.AddSingleton<IContentGenerator, MarkdownContentGenerator>();
 builder.Services.AddSingleton<IWebsiteRepository, GitCliWebsiteRepository>();
+builder.Services.AddSingleton<IStagedMediaStorage, BlobStagedMediaStorage>();
 builder.Services.AddSingleton<MediaPublicationService>();
 builder.Services.AddSingleton<IPublishingService, PublishingService>();
 builder.Services.AddSingleton<IPostPublicationService, PostPublicationService>();

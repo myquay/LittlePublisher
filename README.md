@@ -230,3 +230,11 @@ MIT
 Use **+ → conversation** in the editor to insert the blog's `{{< conversation >}}` / `{{< message role="human" >}}` format. Preview shows ordered turns with speaker labels and optional `name`, `model`, conversation `title`, and `note` metadata. Roles are `human`, `ai`, and `system`; each shortcode belongs on its own line and needs a closing tag. Message bodies use Markdown. The reading preview supports the editor's basic Markdown subset; Hugo renders the full Markdown on the blog.
 
 Unfinished conversations can be saved as drafts. The editor checks conversation structure before opening the publishing review, and preview explains any errors with line numbers. Publishing preserves the shortcode source for Hugo.
+
+### Private photo staging
+
+Photo uploads from the editor (inline article images, photo posts, and book covers) and the Micropub media endpoint are stored in a private Azure Blob container. They are not committed to the website until a post referencing them is published. The article and all referenced staged images are pushed in one Git commit. External image URLs and previously published images continue to work as before; audio/video uploads retain their existing behavior.
+
+The account in `App:Storage:ConnectionString` now needs Blob service access as well as Table access. `App:Storage:MediaContainer` defaults to `littlepublisher-staged-media`; LittlePublisher creates it with private access and rejects uploads if an existing container allows public access. Set `App:Host` to the stable absolute URL of this LittlePublisher instance. Upload responses contain stable URLs under that host's `/api/media/staged/` endpoint. Reading those URLs requires an authenticated publisher token (or an owner Micropub token); they are never public static files.
+
+The editor retrieves previews with authentication and temporary browser object URLs. Saved drafts retain their staged references; publication substitutes public website URLs only in the generated content. Staged originals are retained for draft history, retries, and republishing. There is no automatic expiry: do not apply a blanket container lifecycle deletion rule, as older draft revisions may still reference those files.

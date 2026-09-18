@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import BookSearch from '@/components/BookSearch.vue'
+import MediaUpload from '@/components/MediaUpload.vue'
 import PostEditorView from './PostEditorView.vue'
 import { adminService } from '@/services/adminService'
 import type { Post } from '@/types/admin'
@@ -21,6 +22,7 @@ vi.mock('@/services/adminService', () => ({
     updatePost: vi.fn(),
     publishPost: vi.fn(),
     uploadMedia: vi.fn(),
+    getStagedMedia: vi.fn(),
   },
 }))
 
@@ -170,6 +172,82 @@ describe('PostEditorView photo editing', () => {
       (w.get('[aria-label="Post content in Markdown"]').element as HTMLTextAreaElement).value,
     ).toBe('My thoughts')
     w.unmount()
+  })
+  it('formats a selection in a long post without scrolling when focus returns', async () => {
+    const w = mount(PostEditorView)
+    const body = w.get('[aria-label="Post content in Markdown"]')
+    const content = 'Before selected after\n'.repeat(200)
+    await body.setValue(content)
+    const el = body.element as HTMLTextAreaElement
+    const start = content.indexOf('selected', 1000)
+    el.setSelectionRange(start, start + 'selected'.length)
+    const focus = vi.spyOn(el, 'focus').mockImplementation((options) => {
+      expect(options?.preventScroll).toBe(true)
+      expect(el.selectionStart).toBe(start)
+      expect(el.selectionEnd).toBe(start + '**selected**'.length)
+    })
+
+    await w.get('[aria-label="Insert Markdown formatting"]').trigger('click')
+    await w
+      .findAll('.format-menu button')
+      .find((button) => button.text() === 'bold')!
+      .trigger('click')
+    await flushPromises()
+
+    expect(el.value).toBe(content.slice(0, start) + '**selected**' + content.slice(start + 8))
+    expect(focus).toHaveBeenCalledOnce()
+    expect(w.find('.format-menu').exists()).toBe(false)
+    focus.mockRestore()
+    w.unmount()
+  })
+  it('inserts an uploaded image at the saved cursor position and renders its private preview', async () => {
+    URL.createObjectURL = vi.fn(() => 'blob:staged-photo')
+    URL.revokeObjectURL = vi.fn()
+    vi.mocked(adminService.getStagedMedia).mockResolvedValue(new Blob(['photo']))
+    const w = mount(PostEditorView)
+    const body = w.get('[aria-label="Post content in Markdown"]')
+    await body.setValue('Before  after')
+    ;(body.element as HTMLTextAreaElement).setSelectionRange(7, 7)
+    await w.get('.format-toggle').trigger('click')
+    await w
+      .findAll('.format-menu button')
+      .find((b) => b.text() === 'image')!
+      .trigger('click')
+    const dialog = w.get('[aria-labelledby="image-title"]')
+    expect(dialog.attributes('open')).toBeDefined()
+    const url = 'https://publisher.example.com/api/media/staged/' + 'a'.repeat(32) + '.png'
+    dialog.getComponent(MediaUpload).vm.$emit('update:modelValue', url)
+    await dialog.get('#image-alt').setValue('Mountain')
+    await dialog
+      .findAll('button')
+      .find((b) => b.text() === 'Insert image')!
+      .trigger('click')
+    await flushPromises()
+    expect((body.element as HTMLTextAreaElement).value).toBe(`Before ![Mountain](${url}) after`)
+    await w.get('.floating-preview').trigger('click')
+    await flushPromises()
+    expect(w.get('.reading-preview img').attributes('src')).toBe('blob:staged-photo')
+    expect(w.get('.reading-preview img').attributes('alt')).toBe('Mountain')
+    expect(adminService.getStagedMedia).toHaveBeenCalledWith('a'.repeat(32) + '.png')
+    w.unmount()
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:staged-photo')
+  })
+  it('keeps floating controls in preview and restores the editing selection', async () => {
+    const w = mount(PostEditorView)
+    await w.get('[aria-label="Post content in Markdown"]').setValue('Some long content')
+    ;(w.get('.writing-body').element as HTMLTextAreaElement).setSelectionRange(5, 9)
+    await w.get('.floating-focus').trigger('click')
+    expect(document.documentElement.classList.contains('writer-focus')).toBe(true)
+    await w.get('.floating-preview').trigger('click')
+    await flushPromises()
+    expect(w.get('.floating-preview').text()).toBe('Edit')
+    expect(w.get('.floating-focus').text()).toBe('Exit focus')
+    await w.get('.floating-preview').trigger('click')
+    await flushPromises()
+    const body = w.get('.writing-body').element as HTMLTextAreaElement
+    expect([body.selectionStart, body.selectionEnd]).toEqual([5, 9])
+    w.unmount()
+    expect(document.documentElement.classList.contains('writer-focus')).toBe(false)
   })
   it('inserts a conversation, previews it, and saves its original source', async () => {
     const w = mount(PostEditorView)

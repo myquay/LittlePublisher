@@ -39,21 +39,22 @@ public class ContentTypeAndMediaTests
     }
 
     [Fact]
-    public async Task MediaPublicationService_PublishesValidatedImageToRandomizedMediaPath()
+    public async Task MediaPublicationService_StagesValidatedImageWithoutPublishing()
     {
         var repository = new CapturingRepository();
+        var storage = new StagedMediaTests.MemoryStorage();
         var service = new MediaPublicationService(
-            new AppConfiguration { Website = new WebsiteConfiguration { Url = "https://example.com" } },
-            repository);
+            new AppConfiguration { Host = "https://publisher.example.com", Website = new WebsiteConfiguration { Url = "https://example.com" } },
+            repository, storage);
         await using var content = new MemoryStream([0xff, 0xd8, 0xff, 0x01]);
 
         var result = await service.PublishAsync("image/jpeg", content.Length, content, CancellationToken.None);
 
         Assert.StartsWith("blog/static/media/", result.RepositoryPath);
         Assert.EndsWith(".jpg", result.RepositoryPath);
-        Assert.StartsWith("https://example.com/media/", result.Url);
-        Assert.Equal(result.RepositoryPath, Assert.Single(repository.Mutations).RelativePath);
-        Assert.Equal([0xff, 0xd8, 0xff, 0x01], Assert.Single(repository.Mutations).BinaryContent);
+        Assert.StartsWith("https://publisher.example.com/api/media/staged/", result.Url);
+        Assert.Empty(repository.Mutations);
+        Assert.Equal([0xff, 0xd8, 0xff, 0x01], Assert.Single(storage.Items).Value.Content);
     }
 
     [Fact]

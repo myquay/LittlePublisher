@@ -1,7 +1,11 @@
+import { safeUrl } from './contentTypes'
 import { parseConversations } from './conversations'
 
 // A deliberately small, HTML-free reading preview. Publishing preserves the original Markdown.
-export function markdownPreview(source: string) {
+export function markdownPreview(
+  source: string,
+  resolveImage: (url: string) => string | undefined = safeUrl,
+) {
   const escape = (text: string) =>
     text
       .replace(/&/g, '&amp;')
@@ -9,8 +13,21 @@ export function markdownPreview(source: string) {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;')
-  const inline = (text: string) =>
-    escape(text)
+  const inline = (text: string) => {
+    const images: string[] = []
+    const withImages = text.replace(
+      /!\[((?:\\.|[^\]\\])*)\]\(([^\s)]+)\)/g,
+      (_, alt: string, url: string) => {
+        const src = resolveImage(url)
+        images.push(
+          src
+            ? `<img src="${escape(src)}" alt="${escape(alt.replace(/\\([\[\]\\])/g, '$1'))}" />`
+            : `<span>${escape(alt || 'Image preview loading…')}</span>`,
+        )
+        return `\u0000${images.length - 1}\u0000`
+      },
+    )
+    return escape(withImages)
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.+?)\*/g, '<em>$1</em>')
       .replace(/`([^`]+)`/g, '<code>$1</code>')
@@ -18,6 +35,8 @@ export function markdownPreview(source: string) {
         /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
         '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>',
       )
+      .replace(/\u0000(\d+)\u0000/g, (_, index: string) => images[Number(index)]!)
+  }
   const markdown = (source: string): string => {
     const blocks: string[] = []
     let block: string[] = []

@@ -345,6 +345,7 @@
 }
 .writing-body-wrap {
   position: relative;
+  margin-top: 29px;
 }
 .writing-body {
   display: block;
@@ -353,7 +354,6 @@
   width: 100%;
   padding: 0;
   min-height: 335px;
-  margin-top: 29px;
   font:
     20px/1.85 -apple-system,
     BlinkMacSystemFont,
@@ -368,7 +368,17 @@
 .writing-title:focus-visible,
 .writing-body:focus-visible {
   outline: none;
-  box-shadow: -3px 0 #dfe8df;
+}
+.format-helper {
+  position: sticky;
+  top: 16px;
+  height: 116px;
+  margin-bottom: -116px;
+  z-index: 2;
+  pointer-events: none;
+}
+.format-helper > * {
+  pointer-events: auto;
 }
 .format-toggle {
   position: absolute;
@@ -379,11 +389,30 @@
   border-radius: 50%;
   border: 1px solid var(--writer-line);
   color: var(--writer-muted);
+  background: white;
+}
+.floating-preview,
+.floating-focus {
+  position: absolute;
+  left: -76px;
+  width: 68px;
+  padding: 6px 2px;
+  font-size: 12px;
+  border: 1px solid var(--writer-line);
+  border-radius: 6px;
+  background: white;
+  color: var(--writer-muted);
+}
+.floating-preview {
+  top: 44px;
+}
+.floating-focus {
+  top: 80px;
 }
 .format-menu {
   position: absolute;
-  top: 40px;
-  left: -57px;
+  top: 4px;
+  left: -12px;
   border: 1px solid var(--writer-line);
   border-radius: 6px;
   background: white;
@@ -695,20 +724,18 @@
 .preview-properties dd {
   margin-bottom: 12px;
 }
-.writer-focus .writer-header .header-brand,
-.writer-focus .writer-header .header-actions,
+.writer-focus .writer-header,
+.writer-focus .editor-toolbar,
 .writer-focus .writer-eyebrow,
-.writer-focus .writing-below {
-  visibility: hidden;
+.writer-focus .writing-below,
+.writer-focus .writer-footer,
+.writer-focus .type-context,
+.writer-focus .mobile-webmentions {
+  display: none;
 }
-.writer-focus .writer-header {
-  border-color: transparent;
-}
-.writer-focus .writer-footer {
-  border-color: transparent;
-}
-.writer-focus .writer-footer > span {
-  visibility: hidden;
+.writer-focus .writing-canvas {
+  margin-top: 32px;
+  margin-bottom: 48px;
 }
 @media (min-width: 1500px) {
   .writing-desk {
@@ -794,13 +821,26 @@
   .reading-preview {
     font-size: 18px;
   }
-  .format-toggle {
-    position: static;
+  .writing-body-wrap {
     margin-top: 18px;
+  }
+  .format-helper {
+    height: 38px;
+    margin-bottom: 18px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    background: white;
+  }
+  .format-toggle,
+  .floating-preview,
+  .floating-focus {
+    position: static;
+    flex-shrink: 0;
   }
   .format-menu {
     left: 0;
-    top: 55px;
+    top: 40px;
   }
   .writing-body {
     margin-top: 18px;
@@ -881,4 +921,11 @@
 .reading-preview .conversation-body pre {
   white-space: pre;
   overflow-wrap: normal;
+}
+
+@media (min-width: 681px) and (max-width: 900px) {
+  .writing-canvas {
+    margin-left: 90px;
+    margin-right: 28px;
+  }
 }

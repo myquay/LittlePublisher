@@ -57,7 +57,17 @@ export const adminService = {
     return response.data
   },
 
-  async uploadMedia(file: File, onProgress?: (percent: number) => void): Promise<MediaUploadResult> {
+  async getStagedMedia(id: string): Promise<Blob> {
+    const response = await api.get<Blob>(`/media/staged/${encodeURIComponent(id)}`, {
+      responseType: 'blob',
+    })
+    return response.data
+  },
+
+  async uploadMedia(
+    file: File,
+    onProgress?: (percent: number) => void,
+  ): Promise<MediaUploadResult> {
     const form = new FormData()
     form.append('file', file)
     const response = await api.post<MediaUploadResult>('/media', form, {

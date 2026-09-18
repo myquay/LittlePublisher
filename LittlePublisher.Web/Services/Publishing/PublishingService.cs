@@ -9,19 +9,25 @@ public class PublishingService : IPublishingService
     private readonly AppConfiguration _config;
     private readonly IContentGenerator _contentGenerator;
     private readonly IWebsiteRepository _websiteRepository;
+    private readonly MediaPublicationService? _media;
 
     public PublishingService(
         AppConfiguration config,
         IContentGenerator contentGenerator,
-        IWebsiteRepository websiteRepository)
+        IWebsiteRepository websiteRepository,
+        MediaPublicationService? media = null)
     {
         _config = config;
         _contentGenerator = contentGenerator;
         _websiteRepository = websiteRepository;
+        _media = media;
     }
 
     public async Task<PublishCreateResult> PublishCreateAsync(PublishCreateRequest request, CancellationToken cancellationToken)
     {
+        IReadOnlyList<RepositoryFileMutation> images = [];
+        if (_media is not null)
+            (request, images) = await _media.PrepareAsync(request, cancellationToken);
         var normalizedRequest = request with
         {
             Slug = NormalizeSlug(request.Slug),
@@ -54,10 +60,17 @@ public class PublishingService : IPublishingService
             var mutation = await _websiteRepository.MutateFilesAsync(
                 [
                     RepositoryFileMutation.Upsert(filePath, markdown),
-                    RepositoryFileMutation.Upsert(blogrollPath, blogrollJson)
+                    RepositoryFileMutation.Upsert(blogrollPath, blogrollJson),
+                    .. images
                 ],
                 commitMessage,
                 cancellationToken);
+            commitSha = mutation.CommitSha;
+        }
+        else if (images.Count > 0)
+        {
+            var mutation = await _websiteRepository.MutateFilesAsync(
+                [RepositoryFileMutation.Upsert(filePath, markdown), .. images], commitMessage, cancellationToken);
             commitSha = mutation.CommitSha;
         }
         else

@@ -11,7 +11,10 @@ public class StorageConfiguration
     public string ConnectionString { get; set; } = default!;
 
     /// <summary>
-    /// Prefix for LittlePublisher tables.
+    /// Private blob container for staged photos.
     /// </summary>
+    public string MediaContainer { get; set; } = "littlepublisher-staged-media";
+
+    /// <summary>Prefix for LittlePublisher tables.</summary>
     public string TablePrefix { get; set; } = "LittlePublisher";
 }

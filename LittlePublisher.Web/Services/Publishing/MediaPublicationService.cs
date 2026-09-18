@@ -1,4 +1,6 @@
 using LittlePublisher.Web.Configuration;
+using LittlePublisher.Web.Services.Storage;
+using System.Text.RegularExpressions;
 
 namespace LittlePublisher.Web.Services.Publishing;
 
@@ -22,11 +24,13 @@ public sealed class MediaPublicationService
 
     private readonly AppConfiguration _config;
     private readonly IWebsiteRepository _repository;
+    private readonly IStagedMediaStorage? _staging;
 
-    public MediaPublicationService(AppConfiguration config, IWebsiteRepository repository)
+    public MediaPublicationService(AppConfiguration config, IWebsiteRepository repository, IStagedMediaStorage? staging = null)
     {
         _config = config;
         _repository = repository;
+        _staging = staging;
     }
 
     public async Task<MediaPublicationResult> PublishAsync(
@@ -51,7 +55,16 @@ public sealed class MediaPublicationService
         }
 
         using var buffer = new MemoryStream();
-        await content.CopyToAsync(buffer, cancellationToken);
+        var chunk = new byte[81920];
+        int read;
+        while ((read = await content.ReadAsync(chunk, cancellationToken)) > 0)
+        {
+            if (buffer.Length + read > MaximumUploadBytes)
+                throw new MediaPublicationException(StatusCodes.Status413PayloadTooLarge, "The file exceeds the 20 MB upload limit.");
+            await buffer.WriteAsync(chunk.AsMemory(0, read), cancellationToken);
+        }
+        if (buffer.Length == 0)
+            throw new MediaPublicationException(StatusCodes.Status400BadRequest, "A non-empty file is required.");
         var bytes = buffer.ToArray();
         if (contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) &&
             !HasExpectedImageSignature(contentType, bytes))
@@ -59,6 +72,15 @@ public sealed class MediaPublicationService
             throw new MediaPublicationException(
                 StatusCodes.Status415UnsupportedMediaType,
                 "The file contents do not match the declared image type.");
+        }
+
+        if (contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!Uri.TryCreate(_config.Host, UriKind.Absolute, out var host) || host.Scheme is not ("https" or "http"))
+                throw new MediaPublicationException(StatusCodes.Status503ServiceUnavailable, "Configure the publisher's public host URL before uploading photos.");
+            var id = $"{Guid.NewGuid():N}{extension}";
+            await Staging.PutAsync(id, new StagedMedia(bytes, contentType), cancellationToken);
+            return new MediaPublicationResult($"{StagingPrefix}{id}", $"blog/static/media/{id}");
         }
 
         var name = $"{DateTimeOffset.UtcNow:yyyy/MM}/{Guid.NewGuid():N}{extension}";
@@ -71,6 +93,40 @@ public sealed class MediaPublicationService
         return new MediaPublicationResult(
             $"{_config.Website.Url.TrimEnd('/')}/media/{name}",
             repositoryPath);
+    }
+
+    private IStagedMediaStorage Staging => _staging ??
+        throw new InvalidOperationException("Media staging storage is not configured.");
+
+    private string StagingPrefix => $"{(_config.Host ?? "").TrimEnd('/')}/api/media/staged/";
+    public static bool IsValidId(string id) => Regex.IsMatch(id, @"\A[a-f0-9]{32}\.(jpg|png|gif|webp)\z");
+
+    public Task<StagedMedia?> GetStagedAsync(string id, CancellationToken cancellationToken) =>
+        IsValidId(id) ? Staging.GetAsync(id, cancellationToken) : Task.FromResult<StagedMedia?>(null);
+
+    public async Task<(PublishCreateRequest Request, IReadOnlyList<RepositoryFileMutation> Images)> PrepareAsync(
+        PublishCreateRequest request, CancellationToken cancellationToken)
+    {
+        // Match only references issued by this publisher, never fetch arbitrary URLs.
+        var pattern = new Regex(Regex.Escape(StagingPrefix) + @"(?<id>[a-f0-9]{32}\.(?:jpg|png|gif|webp))(?=$|[\s)\]<>""'])");
+        var sources = new[] { request.Content, request.Summary ?? "" }
+            .Concat(request.Properties?.Values.SelectMany(x => x) ?? []);
+        var ids = sources.SelectMany(x => pattern.Matches(x).Select(m => m.Groups["id"].Value)).Distinct().ToArray();
+        var images = new List<RepositoryFileMutation>();
+        foreach (var id in ids)
+        {
+            var media = await GetStagedAsync(id, cancellationToken) ??
+                throw new InvalidOperationException("A staged image is missing. Upload it again before publishing.");
+            images.Add(RepositoryFileMutation.UpsertBinary($"blog/static/media/{id}", media.Content));
+        }
+        string Resolve(string value) => pattern.Replace(value, m => $"{_config.Website.Url.TrimEnd('/')}/media/{m.Groups["id"].Value}");
+        return (request with
+        {
+            Content = Resolve(request.Content),
+            Summary = request.Summary is null ? null : Resolve(request.Summary),
+            Properties = request.Properties?.ToDictionary(x => x.Key,
+                x => (IReadOnlyList<string>)x.Value.Select(Resolve).ToArray())
+        }, images);
     }
 
     private static bool HasExpectedImageSignature(string contentType, byte[] bytes)

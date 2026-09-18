@@ -17,6 +17,17 @@ public sealed class AdminMediaController : ControllerBase
         _media = media;
     }
 
+    [Authorize(Policy = "StagedMedia")]
+    [HttpGet("staged/{id}")]
+    public async Task<IActionResult> Preview(string id, CancellationToken cancellationToken)
+    {
+        var media = await _media.GetStagedAsync(id, cancellationToken);
+        if (media is null) return NotFound();
+        Response.Headers.CacheControl = "private, no-store";
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        return File(media.Content, media.ContentType);
+    }
+
     [HttpPost]
     public async Task<IActionResult> Upload([FromForm] IFormFile? file, CancellationToken cancellationToken)
     {

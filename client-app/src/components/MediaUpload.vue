@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { adminService } from '@/services/adminService'
-import { readError, safeUrl } from '@/utils/contentTypes'
+import { useMediaPreview } from '@/composables/useMediaPreview'
+import { readError } from '@/utils/contentTypes'
 const props = defineProps<{
   modelValue: string
   alt?: string
@@ -18,7 +19,8 @@ const fileInput = ref<HTMLInputElement>(),
   failedPreview = ref(false),
   dragDepth = ref(0)
 let disposed = false
-const preview = computed(() => localPreview.value || safeUrl(props.modelValue))
+const staged = useMediaPreview(computed(() => [props.modelValue]))
+const preview = computed(() => localPreview.value || staged.resolve(props.modelValue))
 watch(
   () => props.modelValue,
   () => {
@@ -149,6 +151,9 @@ async function upload(file: File) {
     <progress v-if="uploading" :value="progress" max="100" aria-label="Upload progress" />
     <p class="upload-status" role="status">
       {{ uploading ? `Uploading… ${progress}%` : 'Up to 20 MB · Click or drop a file to replace' }}
+    </p>
+    <p v-if="staged.failed.value" class="writer-error" role="alert">
+      Could not load the staged image. Reopen the post to retry.
     </p>
     <p v-if="error" role="alert" class="writer-error">{{ error }}</p>
     <audio v-if="kind === 'audio' && preview" :src="preview" controls preload="metadata" />
