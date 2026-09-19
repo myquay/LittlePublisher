@@ -345,6 +345,7 @@ function insert(kind: string) {
         link: `[${selected || 'link text'}](https://example.com)`,
         image: `![${selected || 'Image description'}](https://example.com/image.jpg)`,
         quote: `\n> ${selected || 'A thought worth keeping'}\n`,
+        table: '\n\n| Column 1 | Column 2 |\n| --- | --- |\n| Value | Value |\n\n',
       } as Record<string, string>
     )[kind] || ''
   form.content = form.content.slice(0, start) + text + form.content.slice(end)
@@ -453,6 +454,7 @@ onBeforeUnmount(() => {
                 'link',
                 'image',
                 'quote',
+                'table',
                 'conversation',
               ]"
               :key="kind"
@@ -745,6 +747,11 @@ onBeforeUnmount(() => {
         message and conversation.
       </p>
       <pre>{{ conversationTemplate }}</pre>
+      <p>
+        Choose table from the + menu to insert a Markdown table. Keep its rows together without
+        blank lines, with one header per column. Use :---, :---:, or ---: in the separator row to
+        align a column left, center, or right.
+      </p>
       <p class="field-help">
         The reading preview supports basic Markdown. Your original source is preserved for
         publishing.

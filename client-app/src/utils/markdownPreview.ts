@@ -1,6 +1,29 @@
 import { safeUrl } from './contentTypes'
 import { parseConversations } from './conversations'
 
+// Split only unescaped pipes, including the optional outer borders.
+function tableCells(line: string): string[] | undefined {
+  const cells: string[] = []
+  let cell = ''
+  let hasPipe = false
+  for (let index = 0; index < line.length; index++) {
+    const char = line[index]!
+    if (char === '\\' && index + 1 < line.length) {
+      const next = line[++index]!
+      cell += next === '|' ? '|' : char + next
+    } else if (char === '|') {
+      cells.push(cell.trim())
+      cell = ''
+      hasPipe = true
+    } else cell += char
+  }
+  if (!hasPipe) return undefined
+  cells.push(cell.trim())
+  if (line.trimStart().startsWith('|')) cells.shift()
+  if (cells[cells.length - 1] === '') cells.pop()
+  return cells
+}
+
 // A deliberately small, HTML-free reading preview. Publishing preserves the original Markdown.
 export function markdownPreview(
   source: string,
@@ -72,6 +95,43 @@ export function markdownPreview(
             ) +
             '</code></pre>'
           )
+        const lines = block.split('\n')
+        for (let index = 0; index < lines.length - 1; index++) {
+          const headers = tableCells(lines[index]!)
+          const separators = tableCells(lines[index + 1]!)
+          if (
+            !headers?.length ||
+            separators?.length !== headers.length ||
+            !separators.every((cell) => /^:?-+:?$/.test(cell))
+          )
+            continue
+          const alignments = separators.map((cell) =>
+            cell.endsWith(':') ? (cell.startsWith(':') ? 'center' : 'right') : 'left',
+          )
+          const row = (cells: string[], tag: 'th' | 'td') =>
+            '<tr>' +
+            headers
+              .map(
+                (_, column) =>
+                  `<${tag}${tag === 'th' ? ' scope="col"' : ''} style="text-align: ${alignments[column]}">${inline(cells[column] || '')}</${tag}>`,
+              )
+              .join('') +
+            '</tr>'
+          const rows: string[] = []
+          let end = index + 2
+          while (end < lines.length) {
+            const cells = tableCells(lines[end]!)
+            if (!cells || /^ {0,3}(?:#{1,6} |>|[-+*] |\d+[.)] )/.test(lines[end]!)) break
+            rows.push(row(cells, 'td'))
+            end++
+          }
+          return (
+            markdown(lines.slice(0, index).join('\n')) +
+            '<div class="table-scroll" tabindex="0" role="region" aria-label="Table">' +
+            `<table><thead>${row(headers, 'th')}</thead><tbody>${rows.join('')}</tbody></table></div>` +
+            markdown(lines.slice(end).join('\n'))
+          )
+        }
         const heading = block.match(/^(#{1,6}) (.*)$/s)
         if (heading)
           return `<h${heading[1]!.length}>${inline(heading[2]!)}</h${heading[1]!.length}>`

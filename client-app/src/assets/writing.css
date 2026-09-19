@@ -706,6 +706,28 @@
   overflow: auto;
   font-size: 14px;
 }
+.reading-preview .table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 24px 0;
+}
+.reading-preview table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+  line-height: 1.6;
+}
+.reading-preview th,
+.reading-preview td {
+  min-width: 100px;
+  padding: 10px 14px;
+  border: 1px solid var(--writer-line);
+  vertical-align: top;
+}
+.reading-preview th {
+  background: #f7f8f5;
+  font-weight: 600;
+}
 .reading-preview img,
 .reading-preview video {
   max-width: 100%;
