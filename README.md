@@ -238,3 +238,23 @@ Photo uploads from the editor (inline article images, photo posts, and book cove
 The account in `App:Storage:ConnectionString` now needs Blob service access as well as Table access. `App:Storage:MediaContainer` defaults to `littlepublisher-staged-media`; LittlePublisher creates it with private access and rejects uploads if an existing container allows public access. Set `App:Host` to the stable absolute URL of this LittlePublisher instance. Upload responses contain stable URLs under that host's `/api/media/staged/` endpoint. Reading those URLs requires an authenticated publisher token (or an owner Micropub token); they are never public static files.
 
 The editor retrieves previews with authentication and temporary browser object URLs. Saved drafts retain their staged references; publication substitutes public website URLs only in the generated content. Staged originals are retained for draft history, retries, and republishing. There is no automatic expiry: do not apply a blanket container lifecycle deletion rule, as older draft revisions may still reference those files.
+
+### Browser session renewal
+
+Browser sign-in issues a short-lived API JWT (configured by `App:Jwt:ExpiryMinutes`,
+60 minutes by default) and a separate seven-day, absolute-lifetime renewal cookie.
+The cookie is HttpOnly, Secure, SameSite=Strict, and restricted to `/api/auth`;
+it cannot authorize normal API requests. The app renews near JWT expiry and
+retries a request once after a 401, including after a suspended tab resumes.
+Sign out removes the renewal cookie. Existing sessions need one new sign-in after
+upgrading to obtain it. Use HTTPS and serve the app/API on the same site.
+
+If renewal expires or fails, the app leaves the editor open. Sign in in another
+tab and retry saving; unsaved work remains in the original tab's memory, so do
+not close or reload it. This is not a browser-local draft backup.
+
+Renewal uses ASP.NET Core cookie authentication and Data Protection. Persist its
+key ring across container replacements (and share it between replicas), otherwise
+a restart/redeployment can invalidate renewal cookies. The default container does
+not configure a persistent key-ring volume. The seven-day lifetime is not extended
+by background refreshes; signing in again starts a new session.

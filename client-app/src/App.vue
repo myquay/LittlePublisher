@@ -8,6 +8,7 @@ import { AppSurface, LoadingState } from '@/components'
 import SetupView from '@/views/SetupView.vue'
 import AppHeader from '@/components/AppHeader.vue'
 import '@/assets/writing.css'
+import { endSession } from '@/services/session'
 import { prepareSignOut } from '@/utils/editorNavigation'
 import type { SetupStatus } from '@/types/setup'
 
@@ -74,6 +75,12 @@ watch(
 
 async function signOut() {
   if (!(await prepareSignOut())) return
+  try {
+    await endSession()
+  } catch {
+    window.alert('Sign out could not be completed. Please try again.')
+    return
+  }
   authStore.logout()
   router.push('/login')
 }

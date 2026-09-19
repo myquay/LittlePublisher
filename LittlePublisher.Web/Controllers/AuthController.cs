@@ -1,8 +1,10 @@
+using System.Security.Claims;
 using System.Net;
 using System.Net.Sockets;
 using AspNet.Security.IndieAuth;
 using AspNet.Security.IndieAuth.Infrastructure;
 using LittlePublisher.Web.Configuration;
+using LittlePublisher.Web.Authentication;
 using LittlePublisher.Web.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
@@ -94,6 +96,14 @@ public class AuthController : ControllerBase
 
         var token = _jwtTokenService.GenerateToken(me, result.Principal?.Claims);
 
+        // Keep renewal credentials out of JavaScript and the callback URL.
+        await HttpContext.SignInAsync(RefreshSession.Scheme,
+            new ClaimsPrincipal(new ClaimsIdentity(
+                [new Claim(IndieAuthClaims.ME, me)], RefreshSession.Scheme)),
+            new AuthenticationProperties { IsPersistent = true, AllowRefresh = false });
+        await HttpContext.SignOutAsync(Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme);
+        Response.Headers.CacheControl = "no-store";
+
         // Redirect to frontend callback with token
         return Redirect($"/callback?token={Uri.EscapeDataString(token)}");
     }
@@ -108,6 +118,29 @@ public class AuthController : ControllerBase
     {
         var me = User.FindFirst(IndieAuthClaims.ME)?.Value;
         return Ok(new { me });
+    }
+
+    [HttpPost("refresh")]
+    public async Task<IActionResult> Refresh()
+    {
+        Response.Headers.CacheControl = "no-store";
+        // A custom header requires a CORS preflight; only configured origins may send it.
+        if (Request.Headers["X-Refresh-Session"] != "1") return BadRequest();
+        var session = await HttpContext.AuthenticateAsync(RefreshSession.Scheme);
+        var me = session.Principal?.FindFirst(IndieAuthClaims.ME)?.Value;
+        if (!session.Succeeded || string.IsNullOrEmpty(me) ||
+            !string.Equals(me.Canonicalize(), GetConfiguredMe(), StringComparison.OrdinalIgnoreCase))
+            return Unauthorized();
+
+        return Ok(new { token = _jwtTokenService.GenerateToken(me) });
+    }
+
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout()
+    {
+        if (Request.Headers["X-Refresh-Session"] != "1") return BadRequest();
+        await HttpContext.SignOutAsync(RefreshSession.Scheme);
+        return NoContent();
     }
 
     private string? GetConfiguredMe()

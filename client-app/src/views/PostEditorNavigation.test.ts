@@ -79,6 +79,26 @@ describe('Editor navigation and concurrency', () => {
     expect(wrapper.text()).toContain('The post has changed.')
     wrapper.unmount()
   })
+  it('keeps unsaved writing in the editor when authentication expires', async () => {
+    vi.mocked(adminService.updatePost).mockRejectedValue({
+      response: {
+        status: 401,
+        data: {
+          message:
+            'Your session has expired. Keep this editor open, sign in in another tab, then save again.',
+        },
+      },
+    })
+    const { router, wrapper } = await setup('/posts/saved-1')
+    await wrapper.get('[aria-label="Post title"]').setValue('Do not lose these words')
+    await router.push('/')
+    expect(router.currentRoute.value.path).toBe('/posts/saved-1')
+    expect((wrapper.get('[aria-label="Post title"]').element as HTMLTextAreaElement).value).toBe(
+      'Do not lose these words',
+    )
+    expect(wrapper.text()).toContain('sign in in another tab')
+    wrapper.unmount()
+  })
   it('moves a newly saved draft to its permanent route without creating it twice', async () => {
     const { router, wrapper } = await setup('/posts/new')
     await wrapper.get('[aria-label="Post title"]').setValue('Draft')

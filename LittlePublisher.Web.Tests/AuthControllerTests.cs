@@ -133,6 +133,54 @@ public class AuthControllerTests
         Assert.True(context.Result?.Handled);
     }
 
+    [Fact]
+    public async Task Refresh_RequiresCsrfHeader()
+    {
+        var controller = CreateController();
+        Assert.IsType<BadRequestResult>(await controller.Refresh());
+    }
+
+    [Fact]
+    public async Task Refresh_RejectsMissingOrExpiredSession()
+    {
+        var controller = CreateController();
+        controller.Request.Headers["X-Refresh-Session"] = "1";
+        Assert.IsType<UnauthorizedResult>(await controller.Refresh());
+    }
+
+    [Theory]
+    [InlineData("https://other.example/")]
+    [InlineData("")]
+    public async Task Refresh_RejectsInvalidIdentity(string me)
+    {
+        var controller = CreateController(authenticateResult: AuthenticateResult.Success(
+            new AuthenticationTicket(PrincipalWithMe(me), RefreshSession.Scheme)));
+        controller.Request.Headers["X-Refresh-Session"] = "1";
+        Assert.IsType<UnauthorizedResult>(await controller.Refresh());
+    }
+
+    [Fact]
+    public async Task Refresh_IssuesFreshTokenForSessionIdentity()
+    {
+        var tokens = new CapturingJwtTokenService();
+        var controller = CreateController(tokenService: tokens, authenticateResult: AuthenticateResult.Success(
+            new AuthenticationTicket(PrincipalWithMe("https://example.com/"), RefreshSession.Scheme)));
+        controller.Request.Headers["X-Refresh-Session"] = "1";
+        Assert.IsType<OkObjectResult>(await controller.Refresh());
+        Assert.Equal("https://example.com/", tokens.Me);
+        Assert.Null(tokens.Claims); // Never copy old JWT expiry or token identifiers.
+        Assert.Equal("no-store", controller.Response.Headers.CacheControl);
+    }
+
+    [Fact]
+    public async Task Logout_RequiresCsrfHeader()
+    {
+        var controller = CreateController();
+        Assert.IsType<BadRequestResult>(await controller.Logout());
+        controller.Request.Headers["X-Refresh-Session"] = "1";
+        Assert.IsType<NoContentResult>(await controller.Logout());
+    }
+
     private static AuthController CreateController(
         AppConfiguration? config = null,
         IJwtTokenService? tokenService = null,

@@ -44,6 +44,7 @@ var authenticationBuilder = builder.Services.AddAuthentication(options =>
     options.Cookie.SameSite = SameSiteMode.Lax;
     options.ExpireTimeSpan = TimeSpan.FromMinutes(5);
 })
+.AddCookie(RefreshSession.Scheme, RefreshSession.Configure)
 .AddJwtBearer(options =>
 {
     options.TokenValidationParameters = new TokenValidationParameters
